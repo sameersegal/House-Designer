@@ -21,3 +21,11 @@ build/
 Thumbs.db
 .idea/
 .vscode/
+
+state/panos/
+state/massing/
+state/logs/
+state/house.json
+state/house.v*.json
+state/requirements.jsonl
+web/tour.json

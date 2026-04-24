@@ -142,12 +142,20 @@ class House(BaseModel):
         return Polygon(self.plot.boundary)
 
     def buildable_area(self) -> Polygon:
-        inset = max(
-            self.plot.setbacks.front,
-            self.plot.setbacks.rear,
-            self.plot.setbacks.side,
-        )
-        return self.plot_polygon().buffer(-inset, join_style=2)
+        plot_poly = self.plot_polygon()
+        sb = self.plot.setbacks
+        if self.plot.north_deg == 0.0 and _is_axis_aligned_rectangle(self.plot.boundary):
+            minx, miny, maxx, maxy = plot_poly.bounds
+            return Polygon(
+                [
+                    (minx + sb.side, miny + sb.front),
+                    (maxx - sb.side, miny + sb.front),
+                    (maxx - sb.side, maxy - sb.rear),
+                    (minx + sb.side, maxy - sb.rear),
+                ]
+            )
+        inset = max(sb.front, sb.rear, sb.side)
+        return plot_poly.buffer(-inset, join_style=2)
 
 
 class Requirement(BaseModel):
@@ -359,3 +367,14 @@ def append_requirement(req: Requirement, path: Path | str) -> None:
 
 def utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _is_axis_aligned_rectangle(boundary: list[Point], tol: float = 1e-6) -> bool:
+    if len(boundary) != 4:
+        return False
+    xs = sorted({round(p[0], 9) for p in boundary})
+    ys = sorted({round(p[1], 9) for p in boundary})
+    if len(xs) != 2 or len(ys) != 2:
+        return False
+    corners = {(xs[0], ys[0]), (xs[1], ys[0]), (xs[0], ys[1]), (xs[1], ys[1])}
+    return corners == {(round(p[0], 9), round(p[1], 9)) for p in boundary}
