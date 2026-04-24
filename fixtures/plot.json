@@ -1,0 +1,5 @@
+{
+  "boundary": [[0, 0], [20, 0], [20, 15], [0, 15]],
+  "north_deg": 0.0,
+  "setbacks": { "front": 3.0, "rear": 3.0, "side": 2.0 }
+}
