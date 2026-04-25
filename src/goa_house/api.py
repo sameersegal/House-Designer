@@ -12,25 +12,17 @@ from goa_house.tour.pannellum import build_tour
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 WEB_DIR = REPO_ROOT / "web"
-STATE_DIR = REPO_ROOT / "state"
-HOUSE_PATH = STATE_DIR / "house.json"
-PANOS_DIR = STATE_DIR / "panos"
-MASSING_DIR = STATE_DIR / "massing"
+DESIGNS_DIR = REPO_ROOT / "designs"
 
 
 def create_app(
     web_dir: Path = WEB_DIR,
-    house_path: Path = HOUSE_PATH,
-    panos_dir: Path = PANOS_DIR,
-    massing_dir: Path = MASSING_DIR,
+    designs_dir: Path = DESIGNS_DIR,
 ) -> FastAPI:
     app = FastAPI(title="Goa House Designer")
 
-    panos_dir.mkdir(parents=True, exist_ok=True)
-    massing_dir.mkdir(parents=True, exist_ok=True)
+    designs_dir.mkdir(parents=True, exist_ok=True)
 
-    app.mount("/panos", StaticFiles(directory=panos_dir), name="panos")
-    app.mount("/massing", StaticFiles(directory=massing_dir), name="massing")
     app.mount("/static", StaticFiles(directory=web_dir), name="static")
 
     @app.get("/")
@@ -40,20 +32,55 @@ def create_app(
             raise HTTPException(status_code=404, detail="index.html not found")
         return FileResponse(path)
 
-    @app.get("/tour.json")
-    def tour() -> JSONResponse:
-        if not house_path.exists():
-            raise HTTPException(status_code=404, detail=f"{house_path} not found")
-        house = load_house(house_path)
-        return JSONResponse(build_tour(house))
+    @app.get("/designs")
+    def list_designs() -> JSONResponse:
+        names = sorted(
+            p.name for p in designs_dir.iterdir() if p.is_dir() and (p / "house.json").exists()
+        )
+        return JSONResponse({"designs": names})
 
-    @app.get("/house.json")
-    def house() -> JSONResponse:
-        if not house_path.exists():
-            raise HTTPException(status_code=404, detail=f"{house_path} not found")
+    @app.get("/designs/{name}/house.json")
+    def design_house(name: str) -> JSONResponse:
+        house_path = _design_file(designs_dir, name, "house.json")
         return JSONResponse(json.loads(house_path.read_text(encoding="utf-8")))
 
+    @app.get("/designs/{name}/tour.json")
+    def design_tour(name: str) -> JSONResponse:
+        house_path = _design_file(designs_dir, name, "house.json")
+        house = load_house(house_path)
+        tour = build_tour(
+            house,
+            panorama_url=lambda rid, _name=name: f"/designs/{_name}/panos/{rid}.jpg",
+        )
+        return JSONResponse(tour)
+
+    @app.get("/designs/{name}/panos/{filename:path}")
+    def design_pano(name: str, filename: str) -> FileResponse:
+        return FileResponse(_design_file(designs_dir, name, "panos", filename))
+
+    @app.get("/designs/{name}/massing/{filename:path}")
+    def design_massing(name: str, filename: str) -> FileResponse:
+        return FileResponse(_design_file(designs_dir, name, "massing", filename))
+
     return app
+
+
+def _design_file(designs_dir: Path, name: str, *parts: str) -> Path:
+    if not _safe_segment(name) or any(not _safe_segment(p) for p in parts[:-1]):
+        raise HTTPException(status_code=400, detail="invalid path")
+    candidate = (designs_dir / name).joinpath(*parts).resolve()
+    root = (designs_dir / name).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="path traversal") from exc
+    if not candidate.exists():
+        raise HTTPException(status_code=404, detail=f"{name}/{'/'.join(parts)} not found")
+    return candidate
+
+
+def _safe_segment(s: str) -> bool:
+    return bool(s) and "/" not in s and "\\" not in s and s not in (".", "..")
 
 
 app = create_app()
