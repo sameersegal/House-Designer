@@ -63,18 +63,13 @@
       byFloor.get(r.floor).push(r);
     });
     const floors = [...byFloor.keys()].sort((a, b) => a - b);
-    const showFloorHeadings = floors.length > 1;
+    const multiFloor = floors.length > 1;
 
     floors.forEach((floor) => {
-      if (showFloorHeadings) {
-        const heading = document.createElement("li");
-        heading.className = "floor-heading";
-        heading.textContent = floorLabel(floor);
-        list.appendChild(heading);
-      }
       byFloor.get(floor).forEach((room) => {
         const li = document.createElement("li");
         li.dataset.sceneId = room.id;
+        li.dataset.floor = String(room.floor);
         li.innerHTML = `${room.name}<small>${roomDims(room)} · ceiling ${room.ceiling_height_m.toFixed(1)} m</small>`;
         li.addEventListener("click", () => viewer.loadScene(room.id));
         list.appendChild(li);
@@ -86,34 +81,34 @@
     tabs.innerHTML = "";
 
     const setTopdownToRoom = (sceneId) => {
-      clearTabActive();
       topdown.src = `/designs/${encodeURIComponent(name)}/massing/${sceneId}/topdown.png?v=${Date.now()}`;
     };
     const setTopdownToFloor = (floor) => {
-      const url =
-        floor === null
-          ? `/designs/${encodeURIComponent(name)}/massing/topdown.png`
-          : `/designs/${encodeURIComponent(name)}/massing/topdown-floor${floor}.png`;
-      topdown.src = `${url}?v=${Date.now()}`;
+      topdown.src = `/designs/${encodeURIComponent(name)}/massing/topdown-floor${floor}.png?v=${Date.now()}`;
     };
-    const clearTabActive = () => {
-      Array.from(tabs.children).forEach((b) => b.classList.remove("active"));
-    };
-    const addTab = (label, floor) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = label;
-      btn.addEventListener("click", () => {
-        clearTabActive();
-        btn.classList.add("active");
-        setTopdownToFloor(floor);
+    const filterListToFloor = (floor) => {
+      Array.from(list.children).forEach((li) => {
+        li.style.display = !multiFloor || Number(li.dataset.floor) === floor ? "" : "none";
       });
-      tabs.appendChild(btn);
-      return btn;
     };
-    if (floors.length > 1) {
-      addTab("All", null);
-      floors.forEach((f) => addTab(floorLabel(f), f));
+    const setActiveFloor = (floor) => {
+      Array.from(tabs.children).forEach((b) =>
+        b.classList.toggle("active", Number(b.dataset.floor) === floor),
+      );
+      filterListToFloor(floor);
+    };
+    if (multiFloor) {
+      floors.forEach((f) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = floorLabel(f);
+        btn.dataset.floor = String(f);
+        btn.addEventListener("click", () => {
+          setActiveFloor(f);
+          setTopdownToFloor(f);
+        });
+        tabs.appendChild(btn);
+      });
     }
 
     topdown.onerror = () => {
@@ -122,11 +117,13 @@
     };
 
     const updateActive = (sceneId) => {
+      const room = roomsById[sceneId];
       Array.from(list.children).forEach((li) => {
         li.classList.toggle("active", li.dataset.sceneId === sceneId);
       });
-      setRoomInfo(roomsById[sceneId]);
+      setRoomInfo(room);
       setTopdownToRoom(sceneId);
+      if (multiFloor && room) setActiveFloor(room.floor);
     };
 
     viewer.on("scenechange", updateActive);

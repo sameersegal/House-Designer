@@ -30,8 +30,6 @@
   .room-list li:hover { background: #2a2d35; }
   .room-list li.active { background: #2f343e; border-color: var(--accent); }
   .room-list li small { display: block; color: var(--muted); font-size: 11px; }
-  .room-list li.floor-heading { padding: 10px 4px 4px; margin: 6px 0 2px; cursor: default; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; border: none; }
-  .room-list li.floor-heading:hover { background: transparent; }
   main { position: relative; background: #0d0e11; }
   #panorama { width: 100%; height: 100%; }
   .topdown { padding: 10px; }
@@ -74,13 +72,13 @@
     <select id="design-select"></select>
   </header>
   <aside class="left">
-    <h2>Rooms</h2>
-    <ul id="rooms" class="room-list"></ul>
     <div class="topdown">
       <h2>Plan</h2>
       <div id="floor-tabs" class="floor-tabs"></div>
       <img id="topdown" alt="top-down plan" />
     </div>
+    <h2>Rooms</h2>
+    <ul id="rooms" class="room-list"></ul>
   </aside>
   <main>
     <div id="panorama"></div>
