@@ -56,12 +56,29 @@
     const roomsById = Object.fromEntries(house.rooms.map((r) => [r.id, r]));
     const list = document.getElementById("rooms");
     list.innerHTML = "";
-    house.rooms.forEach((room) => {
-      const li = document.createElement("li");
-      li.dataset.sceneId = room.id;
-      li.innerHTML = `${room.name}<small>${roomDims(room)} · ceiling ${room.ceiling_height_m.toFixed(1)} m</small>`;
-      li.addEventListener("click", () => viewer.loadScene(room.id));
-      list.appendChild(li);
+
+    const byFloor = new Map();
+    house.rooms.forEach((r) => {
+      if (!byFloor.has(r.floor)) byFloor.set(r.floor, []);
+      byFloor.get(r.floor).push(r);
+    });
+    const floors = [...byFloor.keys()].sort((a, b) => a - b);
+    const showFloorHeadings = floors.length > 1;
+
+    floors.forEach((floor) => {
+      if (showFloorHeadings) {
+        const heading = document.createElement("li");
+        heading.className = "floor-heading";
+        heading.textContent = floorLabel(floor);
+        list.appendChild(heading);
+      }
+      byFloor.get(floor).forEach((room) => {
+        const li = document.createElement("li");
+        li.dataset.sceneId = room.id;
+        li.innerHTML = `${room.name}<small>${roomDims(room)} · ceiling ${room.ceiling_height_m.toFixed(1)} m</small>`;
+        li.addEventListener("click", () => viewer.loadScene(room.id));
+        list.appendChild(li);
+      });
     });
 
     const topdown = document.getElementById("topdown");
@@ -121,5 +138,11 @@
     const w = Math.max(...xs) - Math.min(...xs);
     const h = Math.max(...ys) - Math.min(...ys);
     return `${w.toFixed(1)} × ${h.toFixed(1)} m`;
+  }
+
+  function floorLabel(floor) {
+    if (floor === 0) return "Ground floor";
+    if (floor === 1) return "First floor";
+    return `Floor ${floor}`;
   }
 })();

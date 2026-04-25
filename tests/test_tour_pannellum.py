@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -153,3 +152,60 @@ def test_sample_fixture_builds_clean_tour():
         for hs in scene["hotSpots"]:
             assert hs["sceneId"] in tour["scenes"]
             assert -180 < hs["yaw"] <= 180
+
+
+def test_stairs_hotspot_marks_direction_and_css():
+    g_stair = Room(
+        id="stairwell_g",
+        name="Stairwell (Ground)",
+        polygon=[(2, 9), (8, 9), (8, 12), (2, 12)],
+        floor=0,
+        camera=Camera(x=5, y=10.5),
+        openings=[Opening(type="stairs", wall="N", position_m=2.0, width_m=1.5, to_room="landing")],
+    )
+    u_landing = Room(
+        id="landing",
+        name="Landing",
+        polygon=[(2, 9), (8, 9), (8, 12), (2, 12)],
+        floor=1,
+        camera=Camera(x=5, y=10.5),
+        openings=[Opening(type="stairs", wall="N", position_m=2.0, width_m=1.5, to_room="stairwell_g")],
+    )
+    house = House(plot=PLOT, rooms=[g_stair, u_landing])
+    tour = build_tour(house)
+
+    going_up = tour["scenes"]["stairwell_g"]["hotSpots"][0]
+    assert going_up["sceneId"] == "landing"
+    assert going_up["text"] == "Go up to Landing"
+    assert "goa-stairs-up" in going_up["cssClass"]
+
+    going_down = tour["scenes"]["landing"]["hotSpots"][0]
+    assert going_down["sceneId"] == "stairwell_g"
+    assert going_down["text"] == "Go down to Stairwell (Ground)"
+    assert "goa-stairs-down" in going_down["cssClass"]
+
+
+def test_two_floor_design_builds_clean_tour():
+    house_path = (
+        Path(__file__).resolve().parent.parent / "designs" / "goa-two-floor" / "house.json"
+    )
+    house = load_house(house_path)
+    tour = build_tour(house)
+    expected = {
+        "living_room",
+        "kitchen",
+        "dining",
+        "stairwell_g",
+        "master_bedroom",
+        "bedroom_2",
+        "bedroom_3",
+        "landing",
+    }
+    assert set(tour["scenes"].keys()) == expected
+    stair_targets = {
+        hs["sceneId"]
+        for scene in tour["scenes"].values()
+        for hs in scene["hotSpots"]
+        if "cssClass" in hs and "goa-stairs" in hs["cssClass"]
+    }
+    assert stair_targets == {"stairwell_g", "landing"}

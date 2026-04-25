@@ -91,3 +91,22 @@ def test_empty_designs_dir(tmp_path: Path):
     designs_dir.mkdir()
     client = TestClient(create_app(web_dir=web_dir, designs_dir=designs_dir))
     assert client.get("/designs").json() == {"designs": []}
+
+
+def test_real_designs_dir_lists_committed_designs():
+    designs_dir = REPO_ROOT / "designs"
+    web_dir = REPO_ROOT / "web"
+    client = TestClient(create_app(web_dir=web_dir, designs_dir=designs_dir))
+    listed = client.get("/designs").json()["designs"]
+    assert "goa-sample" in listed
+    assert "goa-two-floor" in listed
+
+    tour = client.get("/designs/goa-two-floor/tour.json").json()
+    assert "stairwell_g" in tour["scenes"]
+    assert "landing" in tour["scenes"]
+    stairs_hotspot = next(
+        hs
+        for hs in tour["scenes"]["stairwell_g"]["hotSpots"]
+        if "cssClass" in hs and "goa-stairs" in hs["cssClass"]
+    )
+    assert stairs_hotspot["sceneId"] == "landing"

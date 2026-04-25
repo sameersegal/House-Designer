@@ -12,6 +12,7 @@ from goa_house.state import load_house
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_HOUSE = REPO_ROOT / "designs" / "goa-sample" / "house.json"
+TWO_FLOOR_HOUSE = REPO_ROOT / "designs" / "goa-two-floor" / "house.json"
 
 
 def test_render_all_placeholders(tmp_path: Path):
@@ -55,4 +56,32 @@ def test_cli_build_tour_end_to_end(tmp_path: Path):
 
 def test_cli_validate_ok(tmp_path: Path):
     rc = cli_main(["validate", "--house", str(SAMPLE_HOUSE)])
+    assert rc == 0
+
+
+def test_two_floor_design_validates_and_emits_per_floor_topdowns(tmp_path: Path):
+    design_dir = tmp_path / "designs" / "two-floor"
+    design_dir.mkdir(parents=True)
+    house_path = design_dir / "house.json"
+    panos_dir = design_dir / "panos"
+    massing_dir = design_dir / "massing"
+    shutil.copyfile(TWO_FLOOR_HOUSE, house_path)
+
+    rc = cli_main([
+        "build-tour",
+        "--house", str(house_path),
+        "--panos-dir", str(panos_dir),
+        "--massing-dir", str(massing_dir),
+    ])
+    assert rc == 0
+    assert (massing_dir / "topdown.png").exists()
+    assert (massing_dir / "topdown-floor0.png").exists()
+    assert (massing_dir / "topdown-floor1.png").exists()
+    for room_id in ("living_room", "stairwell_g", "master_bedroom", "landing"):
+        assert (massing_dir / room_id / "topdown.png").exists()
+        assert (panos_dir / f"{room_id}.jpg").exists()
+
+
+def test_cli_validate_two_floor_design():
+    rc = cli_main(["validate", "--house", str(TWO_FLOOR_HOUSE)])
     assert rc == 0

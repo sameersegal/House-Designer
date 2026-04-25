@@ -93,13 +93,22 @@ def _emit_artifacts(house: House, panos_dir: Path, massing_dir: Path, write_pano
         print(f"wrote {len(paths)} placeholder panoramas -> {panos_dir}")
 
     massing_dir.mkdir(parents=True, exist_ok=True)
-    top = render_topdown(house, massing_dir / "topdown.png")
-    print(f"wrote {top}")
+    floors = sorted({r.floor for r in house.rooms}) or [0]
+
+    overview_floor = floors[0]
+    overview = render_topdown(house, massing_dir / "topdown.png", floor=overview_floor)
+    print(f"wrote {overview}")
+    if len(floors) > 1:
+        for f in floors:
+            out = render_topdown(house, massing_dir / f"topdown-floor{f}.png", floor=f)
+            print(f"wrote {out}")
+
     for room in house.rooms:
         render_topdown(
             house,
             massing_dir / room.id / "topdown.png",
             highlight_room_id=room.id,
+            floor=room.floor,
         )
     return 0
 
