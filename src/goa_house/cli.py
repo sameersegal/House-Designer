@@ -16,6 +16,7 @@ DEFAULT_DESIGN_DIR = DEFAULT_DESIGNS_DIR / DEFAULT_DESIGN_NAME
 DEFAULT_HOUSE_PATH = DEFAULT_DESIGN_DIR / "house.json"
 DEFAULT_PANOS_DIR = DEFAULT_DESIGN_DIR / "panos"
 DEFAULT_MASSING_DIR = DEFAULT_DESIGN_DIR / "massing"
+DEFAULT_LOGS_DIR = REPO_ROOT / "state" / "logs"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -42,6 +43,25 @@ def main(argv: list[str] | None = None) -> int:
     validate = sub.add_parser("validate", help="Validate a house.json file")
     validate.add_argument("--house", type=Path, default=DEFAULT_HOUSE_PATH)
 
+    render_room = sub.add_parser(
+        "render-room", help="Render a real panorama for one room via gpt-image-2"
+    )
+    render_room.add_argument("room_id")
+    render_room.add_argument("--house", type=Path, default=DEFAULT_HOUSE_PATH)
+    render_room.add_argument("--panos-dir", type=Path, default=DEFAULT_PANOS_DIR)
+    render_room.add_argument("--quality", default=None, help="low|medium|high (default: low)")
+    render_room.add_argument("--size", default=None, help="WxH, e.g. 2048x1024")
+    render_room.add_argument("--force", action="store_true", help="ignore cache and re-render")
+
+    render_all = sub.add_parser(
+        "render-all", help="Render real panoramas for every room via gpt-image-2"
+    )
+    render_all.add_argument("--house", type=Path, default=DEFAULT_HOUSE_PATH)
+    render_all.add_argument("--panos-dir", type=Path, default=DEFAULT_PANOS_DIR)
+    render_all.add_argument("--quality", default=None)
+    render_all.add_argument("--size", default=None)
+    render_all.add_argument("--force", action="store_true")
+
     args = parser.parse_args(argv)
 
     if args.cmd == "init":
@@ -52,6 +72,14 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.cmd == "validate":
         return _cmd_validate(args.house)
+    if args.cmd == "render-room":
+        return _cmd_render_room(
+            args.house, args.panos_dir, args.room_id, args.quality, args.size, args.force
+        )
+    if args.cmd == "render-all":
+        return _cmd_render_all(
+            args.house, args.panos_dir, args.quality, args.size, args.force
+        )
     parser.error(f"unknown command {args.cmd}")
     return 2
 
@@ -85,6 +113,64 @@ def _cmd_validate(house_path: Path) -> int:
     for i in issues:
         print(f"[{i.severity}] [{i.code}] {i.message}")
     return 1 if any(i.severity == "hard" for i in issues) else 0
+
+
+def _cmd_render_room(
+    house_path: Path,
+    panos_dir: Path,
+    room_id: str,
+    quality: str | None,
+    size: str | None,
+    force: bool,
+) -> int:
+    from goa_house.render.panorama import ImageGenError, render_panorama
+
+    house = load_house(house_path)
+    room = house.room_by_id(room_id)
+    if room is None:
+        print(f"unknown room: {room_id}", file=sys.stderr)
+        return 1
+    kwargs = _render_kwargs(quality, size, force)
+    try:
+        out = render_panorama(house, room, panos_dir / f"{room.id}.jpg", **kwargs)
+    except ImageGenError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"wrote {out}")
+    return 0
+
+
+def _cmd_render_all(
+    house_path: Path,
+    panos_dir: Path,
+    quality: str | None,
+    size: str | None,
+    force: bool,
+) -> int:
+    from goa_house.render.panorama import ImageGenError, render_panorama
+
+    house = load_house(house_path)
+    if not house.rooms:
+        print("no rooms to render", file=sys.stderr)
+        return 1
+    kwargs = _render_kwargs(quality, size, force)
+    for room in house.rooms:
+        try:
+            out = render_panorama(house, room, panos_dir / f"{room.id}.jpg", **kwargs)
+        except ImageGenError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"wrote {out}")
+    return 0
+
+
+def _render_kwargs(quality: str | None, size: str | None, force: bool) -> dict:
+    kwargs: dict = {"force": force, "log_dir": DEFAULT_LOGS_DIR}
+    if quality:
+        kwargs["quality"] = quality
+    if size:
+        kwargs["size"] = size
+    return kwargs
 
 
 def _emit_artifacts(house: House, panos_dir: Path, massing_dir: Path, write_panos: bool) -> int:
