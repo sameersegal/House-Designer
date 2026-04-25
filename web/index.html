@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Goa House Designer</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css" />
+<style>
+  :root {
+    --bg: #1b1d22;
+    --panel: #23262d;
+    --text: #e9e9ea;
+    --muted: #9aa0a6;
+    --accent: #d97757;
+    --border: #2d3038;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+  .app { display: grid; grid-template-columns: 280px 1fr 320px; grid-template-rows: 48px 1fr; height: 100vh; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0; }
+  header .sub { color: var(--muted); margin-left: 10px; font-size: 12px; }
+  aside { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; }
+  aside.right { border-right: none; border-left: 1px solid var(--border); }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 12px 8px; }
+  .room-list { list-style: none; margin: 0; padding: 0 6px; }
+  .room-list li { padding: 8px 10px; margin: 2px 0; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  .room-list li:hover { background: #2a2d35; }
+  .room-list li.active { background: #2f343e; border-color: var(--accent); }
+  .room-list li small { display: block; color: var(--muted); font-size: 11px; }
+  main { position: relative; background: #0d0e11; }
+  #panorama { width: 100%; height: 100%; }
+  .compass { position: absolute; top: 12px; right: 12px; width: 88px; height: 88px; background: rgba(0,0,0,0.45); border-radius: 50%; border: 1px solid rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; pointer-events: none; font-weight: 700; }
+  .compass .needle { width: 4px; height: 34px; background: linear-gradient(180deg, var(--accent) 0 50%, #666 50% 100%); transform-origin: 50% 100%; transition: transform 0.2s ease; }
+  .compass .n { position: absolute; top: 4px; color: var(--accent); font-size: 12px; }
+  .compass .s { position: absolute; bottom: 4px; color: #bbb; font-size: 12px; }
+  .compass .e { position: absolute; right: 6px; color: #bbb; font-size: 12px; }
+  .compass .w { position: absolute; left: 6px; color: #bbb; font-size: 12px; }
+  .topdown { padding: 10px; }
+  .topdown img { width: 100%; border-radius: 6px; border: 1px solid var(--border); background: #fff; }
+  .panel-block { padding: 10px 14px; border-top: 1px solid var(--border); }
+  .panel-block h3 { font-size: 13px; margin: 0 0 6px; }
+  .panel-block p { margin: 2px 0; color: var(--muted); font-size: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .chip { background: #2a2d35; border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; font-size: 11px; color: var(--muted); }
+  .placeholder-note { margin: 12px; padding: 10px; border: 1px dashed var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Goa House Designer</h1>
+    <span class="sub">sample tour — edit <code>fixtures/house.sample.json</code> and re-run <code>build-sample</code> to personalize</span>
+  </header>
+  <aside class="left">
+    <h2>Rooms</h2>
+    <ul id="rooms" class="room-list"></ul>
+    <div class="topdown">
+      <h2>Plan</h2>
+      <img id="topdown" alt="top-down plan" />
+    </div>
+  </aside>
+  <main>
+    <div id="panorama"></div>
+    <div class="compass" id="compass">
+      <span class="n">N</span><span class="e">E</span><span class="s">S</span><span class="w">W</span>
+      <div class="needle" id="needle"></div>
+    </div>
+  </main>
+  <aside class="right">
+    <h2>Current room</h2>
+    <div class="panel-block" id="room-info"><p>Loading…</p></div>
+    <h2>Style</h2>
+    <div class="panel-block" id="style-info"></div>
+    <div class="placeholder-note">
+      Panoramas are procedural placeholders. Replace them by running the panorama renderer against each room once it is wired up.
+    </div>
+  </aside>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

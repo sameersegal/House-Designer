@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "plot": {
+    "boundary": [[0, 0], [20, 0], [20, 15], [0, 15]],
+    "north_deg": 0.0,
+    "setbacks": { "front": 3.0, "rear": 3.0, "side": 2.0 }
+  },
+  "rooms": [
+    {
+      "id": "living_room",
+      "name": "Living Room",
+      "polygon": [[2, 3], [10, 3], [10, 9], [2, 9]],
+      "floor": 0,
+      "ceiling_height_m": 3.2,
+      "openings": [
+        { "type": "window", "wall": "S", "position_m": 3.0, "width_m": 1.8, "height_m": 1.4 },
+        { "type": "window", "wall": "W", "position_m": 2.0, "width_m": 1.5, "height_m": 1.4 },
+        { "type": "door",   "wall": "E", "position_m": 1.5, "width_m": 0.9, "to_room": "kitchen" },
+        { "type": "door",   "wall": "E", "position_m": 5.0, "width_m": 0.9, "to_room": "master_bedroom" }
+      ],
+      "camera": { "x": 6.0, "y": 6.0, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "kitchen",
+      "name": "Kitchen",
+      "polygon": [[10, 3], [16, 3], [16, 7], [10, 7]],
+      "floor": 0,
+      "ceiling_height_m": 3.0,
+      "openings": [
+        { "type": "window", "wall": "E", "position_m": 1.5, "width_m": 1.2, "height_m": 1.2 },
+        { "type": "door",   "wall": "W", "position_m": 1.5, "width_m": 0.9, "to_room": "living_room" },
+        { "type": "door",   "wall": "N", "position_m": 3.0, "width_m": 0.9, "to_room": "master_bedroom" }
+      ],
+      "camera": { "x": 13.0, "y": 5.0, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "master_bedroom",
+      "name": "Master Bedroom",
+      "polygon": [[10, 7], [16, 7], [16, 12], [10, 12]],
+      "floor": 0,
+      "ceiling_height_m": 3.2,
+      "openings": [
+        { "type": "window", "wall": "N", "position_m": 2.0, "width_m": 1.8, "height_m": 1.4 },
+        { "type": "window", "wall": "E", "position_m": 2.0, "width_m": 1.5, "height_m": 1.4 },
+        { "type": "door",   "wall": "W", "position_m": 1.0, "width_m": 0.9, "to_room": "living_room" },
+        { "type": "door",   "wall": "S", "position_m": 3.0, "width_m": 0.9, "to_room": "kitchen" }
+      ],
+      "camera": { "x": 13.0, "y": 9.5, "z": 1.6, "yaw_deg": 0.0 }
+    }
+  ],
+  "style": {
+    "period": "Indo-Portuguese",
+    "materials": [
+      "lime plaster",
+      "Mangalore tile",
+      "rosewood",
+      "oyster shell windows",
+      "azulejo"
+    ],
+    "lighting": "late afternoon, warm",
+    "mood_tokens": ["coastal humid", "tropical shade", "cross-ventilated"]
+  }
+}
