@@ -51,30 +51,62 @@ Update on every merged change.
 - `web/index.html` + `web/app.js` — three-pane UI with room switcher, live
   compass needle, per-room info, style chips. Pannellum from CDN.
 
-### Tests (30 green)
+### Tests (66 green)
 - State invariants and validation codes (18 cases).
 - Tour builder hotspot math, sample-fixture round trip (8 cases).
 - Placeholder pano aspect, top-down render, full CLI build pipeline (4).
 
-## Pending
-
 ### Build step 4 — Prompt builder + panorama renderer
-- [ ] `src/goa_house/agents/prompt_builder.py` — deterministic prompt with
-      `[STYLE] [ROOM FACTS] [REQUIREMENTS] [CAMERA] [OUTPUT SPEC]`. Wall
-      labels resolved to compass directions via `north_deg`.
-- [ ] `src/goa_house/render/massing.py::render_first_person_block` — the
-      crude POV massing input image.
-- [ ] `src/goa_house/render/panorama.py` — `gpt-image-2` call, image
-      conditioned on the massing block, 4096×2048 output.
-- [ ] Post-validation: aspect ratio + seam-continuity (column-0 vs
-      column-W-1 pixel diff with configurable threshold).
-- [ ] Idempotency: hash `(prompt + ref_image_hash + style_version)`; skip
-      regeneration when unchanged.
-- [ ] Versioned outputs `state/panos/{room_id}.v{n}.jpg`; `{room_id}.jpg`
-      points at the latest.
-- [ ] Cost guardrails: per-session pano cap; warn on threshold.
-- [ ] LLM call logging to `state/logs/`.
-- [ ] CLI: `goa-house render-room <room_id>` and `render-all`.
+- `src/goa_house/agents/prompt_builder.py` — deterministic prompt with
+  `[STYLE] [ROOM FACTS] [ROOM CHARACTER] [REQUIREMENTS] [CAMERA]
+  [OUTPUT SPEC]`. Wall labels mapped to compass via `north_deg`. The
+  `[ROOM CHARACTER]` block injects per-room-type furnishing cues (sala,
+  Goan kitchen, dining, bedroom, stairwell, landing, etc.) plus a stair
+  UP/DOWN narrative on rooms with a `stairs` opening — explicitly
+  describing a continuous floor for ground-level stair rooms and a
+  balustraded floor void for upper-level landings.
+- `src/goa_house/render/panorama.py` — `gpt-image-2` (`client.images.edit`)
+  conditioned on the placeholder pano as reference. JPEG output to
+  `<panos_dir>/<room>.jpg`; `.massing.png` debug sidecar; `.hash`
+  sidecar (`sha256(prompt + ref_bytes + model + quality + size +
+  fidelity)`) for idempotent skip; `--force` to override.
+- Placeholder pano stripped of painted text labels (compass letters, room
+  name, opening labels) — image-edit models were preserving them as
+  signage on wall surfaces. Replaced with tiny tick marks at the
+  cornice/skirting for orientation only.
+- JSONL call log at `state/logs/image_calls.jsonl` (one record per
+  call, success or failure, with token usage).
+- CLI: `goa-house render-room <room_id>` and `render-all` with
+  `--quality`, `--size`, `--force` flags; `OPENAI_API_KEY` env var.
+
+### Build step 4.5 — Multi-floor support + two-floor sample
+- `Room.floor: int` field; per-floor uniqueness for room overlap; new
+  `Opening.type="stairs"` with paired source/target rooms on different
+  floors.
+- Validation codes added: `door_crosses_floors`, `stairs_same_floor`,
+  `stairs_target_missing`. Door-or-stairs graph connectivity replaces
+  the previous door-only check.
+- `tour.pannellum.build_tour` — stair openings render as scene-link
+  hotspots with `text="Go up/down to X"` and
+  `cssClass="goa-stairs goa-stairs-{up,down}"`. Stair pitch aims at
+  mid-flight (UP) or floor void (DOWN); doors keep door-center pitch.
+- `render.massing.render_topdown` — per-floor PNGs
+  (`topdown-floor{N}.png`) plus per-room overviews scoped to the
+  room's floor.
+- Viewer: header design dropdown; rooms grouped under
+  "Ground floor" / "First floor" headings; floor-overview tabs above
+  the topdown image; stair hotspots styled with up/down arrow glyphs.
+- `designs/goa-two-floor/` — 8 rooms (living, kitchen, dining,
+  stairwell_g, master_bedroom, bedroom_2, bedroom_3, landing) with
+  paired stairs.
+
+> Note: panos in `designs/goa-two-floor/panos/` were rendered against
+> the older labeled placeholder. Re-run `goa-house render-all
+> --house designs/goa-two-floor/house.json --panos-dir
+> designs/goa-two-floor/panos --force` to pick up the cleaned-up
+> placeholder + the [ROOM CHARACTER] / stair-direction prompt blocks.
+
+## Pending
 
 ### Build step 5 — Extractor agent + approval API
 - [ ] Wire `extract_diffs` to call Claude Sonnet 4.6 with the existing

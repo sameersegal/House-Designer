@@ -39,10 +39,97 @@ def _living_room() -> Room:
 def test_sections_appear_in_order():
     house = House(plot=PLOT, rooms=[_living_room()])
     prompt = build_panorama_prompt(house, house.rooms[0])
-    for tag in ("[STYLE]", "[ROOM FACTS]", "[REQUIREMENTS]", "[CAMERA]", "[OUTPUT SPEC]"):
+    tags = (
+        "[STYLE]",
+        "[ROOM FACTS]",
+        "[ROOM CHARACTER]",
+        "[REQUIREMENTS]",
+        "[CAMERA]",
+        "[OUTPUT SPEC]",
+    )
+    for tag in tags:
         assert tag in prompt
-    indexes = [prompt.index(tag) for tag in ("[STYLE]", "[ROOM FACTS]", "[REQUIREMENTS]", "[CAMERA]", "[OUTPUT SPEC]")]
+    indexes = [prompt.index(tag) for tag in tags]
     assert indexes == sorted(indexes)
+
+
+def test_room_character_section_uses_room_type_furnishings():
+    house = House(plot=PLOT, rooms=[_living_room()])
+    prompt = build_panorama_prompt(house, house.rooms[0])
+    assert "[ROOM CHARACTER]" in prompt
+    # living-room cue should mention planter chairs / sala vocabulary
+    lower = prompt.lower()
+    assert "planter chair" in lower or "settee" in lower or "sala" in lower
+
+
+def test_room_character_falls_back_for_unknown_room_type():
+    odd = Room(
+        id="oddball",
+        name="Oddball",
+        polygon=[(2, 3), (10, 3), (10, 9), (2, 9)],
+        ceiling_height_m=3.0,
+        openings=[Opening(type="window", wall="S", position_m=3.0, width_m=1.5, height_m=1.4)],
+        camera=Camera(x=6.0, y=6.0, z=1.6, yaw_deg=0.0),
+    )
+    house = House(plot=PLOT, rooms=[odd])
+    prompt = build_panorama_prompt(house, odd)
+    assert "[ROOM CHARACTER]" in prompt
+    assert "Indo-Portuguese" in prompt
+
+
+def test_stair_direction_note_emitted_for_stairs_opening():
+    upstairs = Room(
+        id="landing",
+        name="Landing",
+        polygon=[(2, 9), (10, 9), (10, 12), (2, 12)],
+        floor=1,
+        ceiling_height_m=3.0,
+        openings=[Opening(type="stairs", wall="N", position_m=3.0, width_m=1.5, to_room="stairwell_g")],
+        camera=Camera(x=5.0, y=10.5, z=1.6, yaw_deg=0.0),
+    )
+    downstairs = Room(
+        id="stairwell_g",
+        name="Stairwell Ground",
+        polygon=[(2, 9), (10, 9), (10, 12), (2, 12)],
+        floor=0,
+        ceiling_height_m=3.2,
+        openings=[Opening(type="stairs", wall="N", position_m=3.0, width_m=1.5, to_room="landing")],
+        camera=Camera(x=5.0, y=10.5, z=1.6, yaw_deg=0.0),
+    )
+    house = House(plot=PLOT, rooms=[downstairs, upstairs])
+    up_prompt = build_panorama_prompt(house, downstairs)
+    down_prompt = build_panorama_prompt(house, upstairs)
+    assert "Stairs go UP" in up_prompt
+    assert "Stairs go DOWN" in down_prompt
+
+
+def test_room_facts_describe_stairs_opening_with_direction():
+    upstairs = Room(
+        id="landing",
+        name="Landing",
+        polygon=[(2, 9), (10, 9), (10, 12), (2, 12)],
+        floor=1,
+        ceiling_height_m=3.0,
+        openings=[Opening(type="stairs", wall="N", position_m=3.0, width_m=1.5, to_room="stairwell_g")],
+        camera=Camera(x=5.0, y=10.5, z=1.6, yaw_deg=0.0),
+    )
+    downstairs = Room(
+        id="stairwell_g",
+        name="Stairwell Ground",
+        polygon=[(2, 9), (10, 9), (10, 12), (2, 12)],
+        floor=0,
+        ceiling_height_m=3.2,
+        openings=[Opening(type="stairs", wall="N", position_m=3.0, width_m=1.5, to_room="landing")],
+        camera=Camera(x=5.0, y=10.5, z=1.6, yaw_deg=0.0),
+    )
+    house = House(plot=PLOT, rooms=[downstairs, upstairs])
+    up_prompt = build_panorama_prompt(house, downstairs)
+    down_prompt = build_panorama_prompt(house, upstairs)
+    # Facts section must NOT mislabel stairs as a window.
+    assert "stairs on N wall" in up_prompt
+    assert "stairs on N wall" in down_prompt
+    assert "leads up to Landing" in up_prompt
+    assert "leads down to Stairwell Ground" in down_prompt
 
 
 def test_room_facts_describe_openings_with_compass_and_dimensions():
@@ -117,6 +204,14 @@ def test_output_spec_carries_size_and_seam_constraint():
     assert "2048x1024" in prompt
     assert "2:1" in prompt
     assert "seam" in prompt.lower()
+
+
+def test_output_spec_forbids_painted_text_on_walls():
+    house = House(plot=PLOT, rooms=[_living_room()])
+    prompt = build_panorama_prompt(house, house.rooms[0])
+    lower = prompt.lower()
+    assert "do not paint" in lower
+    assert "signage" in lower or "text" in lower
 
 
 def test_compass_helpers():

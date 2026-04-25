@@ -5,8 +5,7 @@ import hashlib
 import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
-from shapely.geometry import Polygon
+from PIL import Image, ImageDraw
 
 from goa_house.state import House, Room
 from goa_house.tour.pannellum import opening_center, wrap_180
@@ -37,12 +36,8 @@ def render_placeholder_pano(
     draw.line([(0, ceiling_bot), (w, ceiling_bot)], fill=(0, 0, 0), width=3)
     draw.line([(0, floor_top), (w, floor_top)], fill=(0, 0, 0), width=3)
 
-    font = _load_font(48)
-    small_font = _load_font(28)
-
-    _draw_compass_markers(draw, w, h, room, font, small_font)
-    _draw_openings(draw, w, h, room, small_font)
-    _draw_room_label(draw, w, h, room, font, small_font)
+    _draw_compass_ticks(draw, w, h, room)
+    _draw_openings(draw, w, h, room)
     _draw_seam(img)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,17 +59,25 @@ def _pitch_to_row(pitch_deg: float, height: int) -> int:
     return int((1.0 - (pitch_deg + 90.0) / 180.0) * height)
 
 
-def _draw_compass_markers(draw, w, h, room, font, small_font) -> None:
+def _draw_compass_ticks(draw, w, h, room) -> None:
+    """Tiny tick marks at N/E/S/W bearings on the wall band — no letters.
+
+    Letters get painted onto walls by image-edit models that try to "preserve"
+    the reference. Ticks alone give the renderer enough orientation cues
+    without polluting the surfaces.
+    """
     cam_yaw = room.camera.yaw_deg
-    for letter, bearing in [("N", 0.0), ("E", 90.0), ("S", 180.0), ("W", 270.0)]:
+    floor_top = int(h * 2 / 3)
+    ceiling_bot = int(h / 3)
+    for bearing in (0.0, 90.0, 180.0, 270.0):
         yaw = wrap_180(bearing - cam_yaw)
         col = _yaw_to_column(yaw, w)
-        row = int(h * 0.45)
-        _centered_text(draw, (col, row), letter, font, fill=(255, 255, 255))
-        draw.line([(col, row + 40), (col, row + 70)], fill=(255, 255, 255), width=2)
+        # 6px notch on the cornice and a matching one on the skirting
+        draw.rectangle([col - 3, ceiling_bot - 6, col + 3, ceiling_bot], fill=(0, 0, 0))
+        draw.rectangle([col - 3, floor_top, col + 3, floor_top + 6], fill=(0, 0, 0))
 
 
-def _draw_openings(draw, w, h, room: Room, font) -> None:
+def _draw_openings(draw, w, h, room: Room) -> None:
     cam = room.camera
     for opening in room.openings:
         cx, cy = opening_center(room, opening)
@@ -91,19 +94,16 @@ def _draw_openings(draw, w, h, room: Room, font) -> None:
             top_pitch = math.degrees(math.atan2(2.1 - cam.z, horiz))
             bot_pitch = math.degrees(math.atan2(0.0 - cam.z, horiz))
             color = (255, 210, 120)
-            label = f"DOOR -> {opening.to_room}"
         elif opening.type == "stairs":
             top_pitch = math.degrees(math.atan2(2.1 - cam.z, horiz))
             bot_pitch = math.degrees(math.atan2(0.0 - cam.z, horiz))
             color = (200, 180, 255)
-            label = f"STAIRS -> {opening.to_room}"
         else:
             window_center_z = 1.2
             window_half_h = (opening.height_m or 1.2) / 2.0
             top_pitch = math.degrees(math.atan2(window_center_z + window_half_h - cam.z, horiz))
             bot_pitch = math.degrees(math.atan2(window_center_z - window_half_h - cam.z, horiz))
             color = (180, 220, 255)
-            label = "WINDOW"
 
         col_left = _yaw_to_column(yaw - half_width_deg, w)
         col_right = _yaw_to_column(yaw + half_width_deg, w)
@@ -115,26 +115,10 @@ def _draw_openings(draw, w, h, room: Room, font) -> None:
             draw.rectangle([col_left, row_top, w, row_bot], outline=color, width=4)
             draw.rectangle([0, row_top, col_right, row_bot], outline=color, width=4)
 
-        label_col = _yaw_to_column(yaw, w)
-        _centered_text(draw, (label_col, row_bot + 18), label, font, fill=color)
-
-
-def _draw_room_label(draw, w, h, room, font, small_font) -> None:
-    _centered_text(draw, (w // 2, h // 2 + 120), room.name.upper(), font, fill=(255, 255, 255))
-    dims = _room_dims_m(room)
-    subtitle = f"{dims[0]:.1f} x {dims[1]:.1f} m   ceiling {room.ceiling_height_m:.1f} m"
-    _centered_text(draw, (w // 2, h // 2 + 170), subtitle, small_font, fill=(230, 230, 230))
-    _centered_text(draw, (w // 2, h // 2 + 205), "placeholder panorama", small_font, fill=(200, 200, 200))
-
 
 def _draw_seam(img: Image.Image) -> None:
     left = img.crop((0, 0, 1, img.height))
     img.paste(left, (img.width - 1, 0))
-
-
-def _room_dims_m(room: Room) -> tuple[float, float]:
-    minx, miny, maxx, maxy = Polygon(room.polygon).bounds
-    return (maxx - minx, maxy - miny)
 
 
 def _color_from_id(room_id: str) -> tuple[int, int, int]:
@@ -144,24 +128,3 @@ def _color_from_id(room_id: str) -> tuple[int, int, int]:
     val = 0.55 + (h[2] / 255.0) * 0.10
     r, g, b = colorsys.hsv_to_rgb(hue, sat, val)
     return (int(r * 255), int(g * 255), int(b * 255))
-
-
-def _centered_text(draw, xy, text, font, fill) -> None:
-    bbox = draw.textbbox((0, 0), text, font=font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    draw.text((xy[0] - tw // 2, xy[1] - th // 2), text, font=font, fill=fill)
-
-
-def _load_font(size: int) -> ImageFont.ImageFont:
-    for path in (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/Library/Fonts/Arial.ttf",
-        "C:/Windows/Fonts/arial.ttf",
-    ):
-        try:
-            return ImageFont.truetype(path, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
