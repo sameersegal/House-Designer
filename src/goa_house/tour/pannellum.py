@@ -5,7 +5,7 @@ from typing import Callable, Optional
 
 from shapely.geometry import Polygon
 
-from goa_house.state import House, Opening, Room
+from goa_house.state import CONNECTING_OPENINGS, House, Opening, Room
 
 DEFAULT_PANO_URL = lambda rid: f"/panos/{rid}.jpg"
 DOOR_CENTER_Z_M = 1.0
@@ -22,19 +22,25 @@ def build_tour(
     for room in house.rooms:
         hotspots = []
         for opening in room.openings:
-            if opening.type != "door" or not opening.to_room:
+            if opening.type not in CONNECTING_OPENINGS or not opening.to_room:
                 continue
             target = house.room_by_id(opening.to_room)
             if target is None:
                 continue
             yaw, pitch = door_hotspot_angles(room, opening)
-            hotspots.append({
+            hotspot: dict = {
                 "pitch": round(pitch, 2),
                 "yaw": round(yaw, 2),
                 "type": "scene",
-                "text": f"Go to {target.name}",
                 "sceneId": target.id,
-            })
+            }
+            if opening.type == "stairs":
+                direction = "up" if target.floor > room.floor else "down"
+                hotspot["text"] = f"Go {direction} to {target.name}"
+                hotspot["cssClass"] = f"goa-stairs goa-stairs-{direction}"
+            else:
+                hotspot["text"] = f"Go to {target.name}"
+            hotspots.append(hotspot)
         scenes[room.id] = {
             "title": room.name,
             "type": "equirectangular",

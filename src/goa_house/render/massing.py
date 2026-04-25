@@ -20,6 +20,7 @@ ROOM_COLOR = "#b6c9d9"
 HIGHLIGHT_COLOR = "#d97757"
 DOOR_COLOR = "#8b5a2b"
 WINDOW_COLOR = "#3b80c2"
+STAIRS_COLOR = "#7a4ec2"
 NORTH_ARROW_COLOR = "#333"
 
 
@@ -30,13 +31,16 @@ def render_topdown(
     show_cameras: bool = True,
     figsize: tuple[float, float] = (8.0, 6.0),
     dpi: int = 140,
+    floor: Optional[int] = None,
 ) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
+    rooms = [r for r in house.rooms if floor is None or r.floor == floor]
+
     _draw_plot(ax, house)
     _draw_buildable(ax, house)
-    for room in house.rooms:
+    for room in rooms:
         _draw_room(ax, room, highlighted=(room.id == highlight_room_id))
         if show_cameras:
             _draw_camera(ax, room)
@@ -48,7 +52,12 @@ def render_topdown(
     ax.set_aspect("equal")
     ax.set_xlabel("x (m)")
     ax.set_ylabel("y (m)")
-    title = "Plot & Layout" if highlight_room_id is None else f"{highlight_room_id}"
+    if highlight_room_id is not None:
+        title = highlight_room_id
+    elif floor is not None:
+        title = f"Floor {floor}"
+    else:
+        title = "Plot & Layout"
     ax.set_title(title)
     ax.grid(True, linestyle=":", alpha=0.35)
 
@@ -79,8 +88,12 @@ def _draw_room(ax, room: Room, highlighted: bool) -> None:
     ax.text(cx, cy, room.name, ha="center", va="center", fontsize=9, color="#222")
     for opening in room.openings:
         ox, oy = opening_center(room, opening)
-        color = DOOR_COLOR if opening.type == "door" else WINDOW_COLOR
-        marker = "s" if opening.type == "door" else "o"
+        if opening.type == "door":
+            color, marker = DOOR_COLOR, "s"
+        elif opening.type == "stairs":
+            color, marker = STAIRS_COLOR, "^"
+        else:
+            color, marker = WINDOW_COLOR, "o"
         ax.plot(ox, oy, marker=marker, color=color, markersize=6, markeredgecolor="#000", markeredgewidth=0.5)
 
 

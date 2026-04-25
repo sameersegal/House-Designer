@@ -12,7 +12,8 @@ from shapely.geometry import LineString, Polygon
 Point = tuple[float, float]
 
 Wall = Literal["N", "S", "E", "W"]
-OpeningType = Literal["door", "window"]
+OpeningType = Literal["door", "window", "stairs"]
+CONNECTING_OPENINGS: tuple[str, ...] = ("door", "stairs")
 RequirementType = Literal[
     "orientation",
     "dimension",
@@ -63,8 +64,8 @@ class Opening(BaseModel):
 
     @model_validator(mode="after")
     def _cross_checks(self) -> "Opening":
-        if self.type == "door" and not self.to_room:
-            raise ValueError("door openings must reference a to_room")
+        if self.type in CONNECTING_OPENINGS and not self.to_room:
+            raise ValueError(f"{self.type} openings must reference a to_room")
         if self.type == "window" and self.to_room is not None:
             raise ValueError("window openings must not reference to_room")
         return self
@@ -235,6 +236,8 @@ def validate_house(house: House) -> list[ValidationIssue]:
     for i in range(len(house.rooms)):
         for j in range(i + 1, len(house.rooms)):
             a, b = house.rooms[i], house.rooms[j]
+            if a.floor != b.floor:
+                continue
             inter = a.shapely().intersection(b.shapely())
             if inter.area > 1e-6:
                 issues.append(
@@ -261,18 +264,42 @@ def _check_openings(house: House, issues: list[ValidationIssue]) -> None:
             "E": LineString([(maxx, miny), (maxx, maxy)]),
             "W": LineString([(minx, miny), (minx, maxy)]),
         }
-        door_targets = {o.to_room for o in room.openings if o.type == "door"}
-        for target in door_targets:
-            if target and house.room_by_id(target) is None:
-                issues.append(
-                    ValidationIssue(
-                        severity="hard",
-                        code="door_target_missing",
-                        message=f"room {room.id} door references unknown room {target}",
-                        subject=room.id,
-                    )
-                )
         for o in room.openings:
+            if o.type in CONNECTING_OPENINGS and o.to_room:
+                target = house.room_by_id(o.to_room)
+                if target is None:
+                    issues.append(
+                        ValidationIssue(
+                            severity="hard",
+                            code=f"{o.type}_target_missing",
+                            message=f"room {room.id} {o.type} references unknown room {o.to_room}",
+                            subject=room.id,
+                        )
+                    )
+                elif o.type == "door" and target.floor != room.floor:
+                    issues.append(
+                        ValidationIssue(
+                            severity="hard",
+                            code="door_crosses_floors",
+                            message=(
+                                f"room {room.id} (floor {room.floor}) door targets {o.to_room} "
+                                f"on floor {target.floor}; use a stairs opening to cross floors"
+                            ),
+                            subject=room.id,
+                        )
+                    )
+                elif o.type == "stairs" and target.floor == room.floor:
+                    issues.append(
+                        ValidationIssue(
+                            severity="hard",
+                            code="stairs_same_floor",
+                            message=(
+                                f"room {room.id} stairs target {o.to_room} is on the same floor "
+                                f"({room.floor}); stairs must connect different floors"
+                            ),
+                            subject=room.id,
+                        )
+                    )
             length = walls[o.wall].length
             if o.position_m + o.width_m > length + 1e-6:
                 issues.append(
@@ -294,7 +321,7 @@ def _check_connectivity(house: House, issues: list[ValidationIssue]) -> None:
     graph: dict[str, set[str]] = {r.id: set() for r in house.rooms}
     for r in house.rooms:
         for o in r.openings:
-            if o.type != "door" or not o.to_room or o.to_room not in graph:
+            if o.type not in CONNECTING_OPENINGS or not o.to_room or o.to_room not in graph:
                 continue
             graph[r.id].add(o.to_room)
             graph[o.to_room].add(r.id)
@@ -312,7 +339,7 @@ def _check_connectivity(house: House, issues: list[ValidationIssue]) -> None:
                 ValidationIssue(
                     severity="hard",
                     code="room_unreachable",
-                    message=f"room {rid} not reachable via doors",
+                    message=f"room {rid} not reachable via doors or stairs",
                     subject=rid,
                 )
             )

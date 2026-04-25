@@ -207,3 +207,115 @@ def test_requirements_log_roundtrip(tmp_path: Path):
 
 def test_load_requirements_missing_file(tmp_path: Path):
     assert load_requirements(tmp_path / "nope.jsonl") == []
+
+
+# ----- multi-floor / stairs ---------------------------------------------------
+
+def _floor_room(
+    id: str,
+    floor: int,
+    *,
+    polygon=None,
+    openings=None,
+    camera=None,
+) -> Room:
+    return Room(
+        id=id,
+        name=id.replace("_", " ").title(),
+        polygon=polygon or [(4, 4), (9, 4), (9, 9), (4, 9)],
+        floor=floor,
+        openings=openings or [],
+        camera=camera or Camera(x=6.5, y=6.5, z=1.6, yaw_deg=0.0),
+    )
+
+
+def test_stairs_requires_to_room():
+    with pytest.raises(ValidationError):
+        Opening(type="stairs", wall="N", position_m=1.0, width_m=1.0)
+
+
+def test_stairs_must_connect_different_floors():
+    a = _floor_room(
+        "stairwell_g",
+        0,
+        openings=[Opening(type="stairs", wall="N", position_m=1.0, width_m=1.0, to_room="other_g")],
+    )
+    b = _floor_room("other_g", 0, polygon=[(4, 9), (9, 9), (9, 12), (4, 12)])
+    codes = {i.code for i in validate_house(House(plot=PLOT, rooms=[a, b]))}
+    assert "stairs_same_floor" in codes
+
+
+def test_door_cannot_cross_floors():
+    a = _floor_room(
+        "stairwell_g",
+        0,
+        openings=[Opening(type="door", wall="N", position_m=1.0, width_m=0.9, to_room="landing")],
+    )
+    b = _floor_room("landing", 1)
+    codes = {i.code for i in validate_house(House(plot=PLOT, rooms=[a, b]))}
+    assert "door_crosses_floors" in codes
+
+
+def test_stairs_target_missing():
+    a = _floor_room(
+        "stairwell_g",
+        0,
+        openings=[Opening(type="stairs", wall="N", position_m=1.0, width_m=1.0, to_room="ghost")],
+    )
+    codes = {i.code for i in validate_house(House(plot=PLOT, rooms=[a]))}
+    assert "stairs_target_missing" in codes
+
+
+def test_rooms_can_overlap_xy_on_different_floors():
+    poly = [(4, 4), (9, 4), (9, 9), (4, 9)]
+    a = _floor_room(
+        "stairwell_g",
+        0,
+        polygon=poly,
+        openings=[Opening(type="stairs", wall="N", position_m=1.0, width_m=1.0, to_room="landing")],
+    )
+    b = _floor_room(
+        "landing",
+        1,
+        polygon=poly,
+        openings=[Opening(type="stairs", wall="N", position_m=1.0, width_m=1.0, to_room="stairwell_g")],
+    )
+    issues = validate_house(House(plot=PLOT, rooms=[a, b]))
+    assert issues == []
+
+
+def test_stairs_make_floors_connected():
+    g_living = _floor_room(
+        "living",
+        0,
+        polygon=[(2, 3), (8, 3), (8, 8), (2, 8)],
+        openings=[Opening(type="door", wall="N", position_m=2.0, width_m=0.9, to_room="stairwell_g")],
+    )
+    g_stair = _floor_room(
+        "stairwell_g",
+        0,
+        polygon=[(2, 8), (8, 8), (8, 12), (2, 12)],
+        openings=[
+            Opening(type="door", wall="S", position_m=2.0, width_m=0.9, to_room="living"),
+            Opening(type="stairs", wall="N", position_m=1.0, width_m=1.0, to_room="landing"),
+        ],
+        camera=Camera(x=5, y=10),
+    )
+    u_landing = _floor_room(
+        "landing",
+        1,
+        polygon=[(2, 8), (8, 8), (8, 12), (2, 12)],
+        openings=[
+            Opening(type="stairs", wall="N", position_m=1.0, width_m=1.0, to_room="stairwell_g"),
+            Opening(type="door", wall="S", position_m=2.0, width_m=0.9, to_room="bedroom"),
+        ],
+        camera=Camera(x=5, y=10),
+    )
+    u_bed = _floor_room(
+        "bedroom",
+        1,
+        polygon=[(2, 3), (8, 3), (8, 8), (2, 8)],
+        openings=[Opening(type="door", wall="N", position_m=2.0, width_m=0.9, to_room="landing")],
+    )
+    house = House(plot=PLOT, rooms=[g_living, g_stair, u_landing, u_bed])
+    assert validate_house(house) == []

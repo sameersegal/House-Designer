@@ -92,6 +92,11 @@ def _draw_openings(draw, w, h, room: Room, font) -> None:
             bot_pitch = math.degrees(math.atan2(0.0 - cam.z, horiz))
             color = (255, 210, 120)
             label = f"DOOR -> {opening.to_room}"
+        elif opening.type == "stairs":
+            top_pitch = math.degrees(math.atan2(2.1 - cam.z, horiz))
+            bot_pitch = math.degrees(math.atan2(0.0 - cam.z, horiz))
+            color = (200, 180, 255)
+            label = f"STAIRS -> {opening.to_room}"
         else:
             window_center_z = 1.2
             window_half_h = (opening.height_m or 1.2) / 2.0
