@@ -1,62 +1,90 @@
-(async function () {
-  const [tour, house] = await Promise.all([
-    fetch("/tour.json").then((r) => r.json()),
-    fetch("/house.json").then((r) => r.json()),
-  ]);
+(function () {
+  let viewer = null;
 
-  const firstSceneId = tour.default.firstScene;
-  if (!firstSceneId) {
-    document.getElementById("panorama").textContent = "No rooms defined.";
-    return;
+  document.addEventListener("DOMContentLoaded", main);
+
+  async function main() {
+    const designs = await fetch("/designs").then((r) => r.json()).then((d) => d.designs || []);
+    if (!designs.length) {
+      document.getElementById("panorama").textContent = "No designs found in designs/.";
+      return;
+    }
+
+    const params = new URLSearchParams(location.search);
+    const requested = params.get("design");
+    const initial = designs.includes(requested) ? requested : designs[0];
+
+    const select = document.getElementById("design-select");
+    select.innerHTML = designs
+      .map((name) => `<option value="${name}">${name}</option>`)
+      .join("");
+    select.value = initial;
+    select.addEventListener("change", (e) => {
+      const next = e.target.value;
+      history.replaceState(null, "", `?design=${encodeURIComponent(next)}`);
+      loadDesign(next);
+    });
+
+    await loadDesign(initial);
   }
 
-  const viewer = pannellum.viewer("panorama", {
-    default: { ...tour.default, sceneFadeDuration: 600 },
-    scenes: tour.scenes,
-  });
+  async function loadDesign(name) {
+    const [tour, house] = await Promise.all([
+      fetch(`/designs/${encodeURIComponent(name)}/tour.json`).then((r) => r.json()),
+      fetch(`/designs/${encodeURIComponent(name)}/house.json`).then((r) => r.json()),
+    ]);
 
-  const roomsById = Object.fromEntries(house.rooms.map((r) => [r.id, r]));
-  const list = document.getElementById("rooms");
-  list.innerHTML = "";
-  house.rooms.forEach((room) => {
-    const li = document.createElement("li");
-    li.dataset.sceneId = room.id;
-    li.innerHTML = `${room.name}<small>${roomDims(room)} · ceiling ${room.ceiling_height_m.toFixed(1)} m</small>`;
-    li.addEventListener("click", () => viewer.loadScene(room.id));
-    list.appendChild(li);
-  });
+    document.getElementById("design-sub").textContent =
+      `${house.rooms.length} room${house.rooms.length === 1 ? "" : "s"}`;
 
-  const topdown = document.getElementById("topdown");
-  const setTopdown = (sceneId) => {
-    topdown.src = `/massing/${sceneId}/topdown.png?v=${Date.now()}`;
-  };
-  topdown.onerror = () => {
-    topdown.src = "/massing/topdown.png";
-  };
+    if (viewer) {
+      viewer.destroy();
+      viewer = null;
+    }
 
-  const updateActive = (sceneId) => {
-    Array.from(list.children).forEach((li) => {
-      li.classList.toggle("active", li.dataset.sceneId === sceneId);
+    const firstSceneId = tour.default && tour.default.firstScene;
+    if (!firstSceneId) {
+      document.getElementById("panorama").textContent = "No rooms defined for this design.";
+      return;
+    }
+
+    viewer = pannellum.viewer("panorama", {
+      default: { ...tour.default, sceneFadeDuration: 600 },
+      scenes: tour.scenes,
     });
-    setRoomInfo(roomsById[sceneId]);
-    setTopdown(sceneId);
-  };
 
-  viewer.on("scenechange", updateActive);
-  updateActive(firstSceneId);
+    const roomsById = Object.fromEntries(house.rooms.map((r) => [r.id, r]));
+    const list = document.getElementById("rooms");
+    list.innerHTML = "";
+    house.rooms.forEach((room) => {
+      const li = document.createElement("li");
+      li.dataset.sceneId = room.id;
+      li.innerHTML = `${room.name}<small>${roomDims(room)} · ceiling ${room.ceiling_height_m.toFixed(1)} m</small>`;
+      li.addEventListener("click", () => viewer.loadScene(room.id));
+      list.appendChild(li);
+    });
 
-  setStyle(house.style);
+    const topdown = document.getElementById("topdown");
+    const setTopdown = (sceneId) => {
+      topdown.src = `/designs/${encodeURIComponent(name)}/massing/${sceneId}/topdown.png?v=${Date.now()}`;
+    };
+    topdown.onerror = () => {
+      topdown.src = `/designs/${encodeURIComponent(name)}/massing/topdown.png`;
+    };
 
-  const needle = document.getElementById("needle");
-  const spin = () => {
-    const yaw = viewer.getYaw();
-    const scene = tour.scenes[viewer.getScene()] || {};
-    const northOffset = scene.northOffset || 0;
-    const bearing = yaw + northOffset;
-    needle.style.transform = `translate(-50%, -100%) rotate(${bearing}deg)`;
-    requestAnimationFrame(spin);
-  };
-  requestAnimationFrame(spin);
+    const updateActive = (sceneId) => {
+      Array.from(list.children).forEach((li) => {
+        li.classList.toggle("active", li.dataset.sceneId === sceneId);
+      });
+      setRoomInfo(roomsById[sceneId]);
+      setTopdown(sceneId);
+    };
+
+    viewer.on("scenechange", updateActive);
+    updateActive(firstSceneId);
+
+    setStyle(house.style);
+  }
 
   function setRoomInfo(room) {
     const el = document.getElementById("room-info");

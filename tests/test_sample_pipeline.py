@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import shutil
 from pathlib import Path
 
 from PIL import Image
@@ -9,14 +9,13 @@ from goa_house.cli import main as cli_main
 from goa_house.render.massing import render_topdown
 from goa_house.render.placeholder import render_all_placeholders
 from goa_house.state import load_house
-from goa_house.tour.pannellum import build_tour
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SAMPLE_FIXTURE = REPO_ROOT / "fixtures" / "house.sample.json"
+SAMPLE_HOUSE = REPO_ROOT / "designs" / "goa-sample" / "house.json"
 
 
 def test_render_all_placeholders(tmp_path: Path):
-    house = load_house(SAMPLE_FIXTURE)
+    house = load_house(SAMPLE_HOUSE)
     panos_dir = tmp_path / "panos"
     paths = render_all_placeholders(house, panos_dir)
     assert {p.stem for p in paths} == {r.id for r in house.rooms}
@@ -27,38 +26,33 @@ def test_render_all_placeholders(tmp_path: Path):
 
 
 def test_render_topdown(tmp_path: Path):
-    house = load_house(SAMPLE_FIXTURE)
+    house = load_house(SAMPLE_HOUSE)
     out = render_topdown(house, tmp_path / "topdown.png")
     assert out.exists()
     assert out.stat().st_size > 2000
 
 
-def test_cli_build_sample_end_to_end(tmp_path: Path, monkeypatch):
-    state_dir = tmp_path / "state"
-    panos_dir = state_dir / "panos"
-    massing_dir = state_dir / "massing"
-    house_out = state_dir / "house.json"
-    web_dir = REPO_ROOT / "web"
-    web_dir.mkdir(exist_ok=True)
+def test_cli_build_tour_end_to_end(tmp_path: Path):
+    design_dir = tmp_path / "designs" / "test-design"
+    design_dir.mkdir(parents=True)
+    house_path = design_dir / "house.json"
+    panos_dir = design_dir / "panos"
+    massing_dir = design_dir / "massing"
+    shutil.copyfile(SAMPLE_HOUSE, house_path)
 
     rc = cli_main([
-        "build-sample",
-        "--fixture", str(SAMPLE_FIXTURE),
-        "--house-out", str(house_out),
+        "build-tour",
+        "--house", str(house_path),
         "--panos-dir", str(panos_dir),
         "--massing-dir", str(massing_dir),
     ])
     assert rc == 0
-    assert house_out.exists()
     assert (massing_dir / "topdown.png").exists()
     for room_id in ("living_room", "kitchen", "master_bedroom"):
         assert (panos_dir / f"{room_id}.jpg").exists()
         assert (massing_dir / room_id / "topdown.png").exists()
-    tour_path = web_dir / "tour.json"
-    tour = json.loads(tour_path.read_text())
-    assert tour["default"]["firstScene"] == "living_room"
 
 
 def test_cli_validate_ok(tmp_path: Path):
-    rc = cli_main(["validate", "--house", str(SAMPLE_FIXTURE)])
+    rc = cli_main(["validate", "--house", str(SAMPLE_HOUSE)])
     assert rc == 0

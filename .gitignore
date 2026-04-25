@@ -28,4 +28,3 @@ state/logs/
 state/house.json
 state/house.v*.json
 state/requirements.jsonl
-web/tour.json

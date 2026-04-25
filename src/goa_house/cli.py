@@ -2,42 +2,42 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 from pathlib import Path
 
 from goa_house.render.massing import render_topdown
 from goa_house.render.placeholder import render_all_placeholders
 from goa_house.state import House, Plot, load_house, save_house, validate_house
-from goa_house.tour.pannellum import build_tour
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_STATE_DIR = REPO_ROOT / "state"
-DEFAULT_PANOS_DIR = DEFAULT_STATE_DIR / "panos"
-DEFAULT_MASSING_DIR = DEFAULT_STATE_DIR / "massing"
-DEFAULT_HOUSE_PATH = DEFAULT_STATE_DIR / "house.json"
-DEFAULT_SAMPLE_FIXTURE = REPO_ROOT / "fixtures" / "house.sample.json"
+DEFAULT_DESIGNS_DIR = REPO_ROOT / "designs"
+DEFAULT_DESIGN_NAME = "goa-sample"
+DEFAULT_DESIGN_DIR = DEFAULT_DESIGNS_DIR / DEFAULT_DESIGN_NAME
+DEFAULT_HOUSE_PATH = DEFAULT_DESIGN_DIR / "house.json"
+DEFAULT_PANOS_DIR = DEFAULT_DESIGN_DIR / "panos"
+DEFAULT_MASSING_DIR = DEFAULT_DESIGN_DIR / "massing"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="goa-house")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    init = sub.add_parser("init", help="Initialize state/house.json from a plot fixture")
+    init = sub.add_parser("init", help="Initialize a fresh house.json from a plot fixture")
     init.add_argument("--plot", type=Path, required=True)
     init.add_argument("--out", type=Path, default=DEFAULT_HOUSE_PATH)
 
-    build = sub.add_parser("build-sample", help="Materialize the sample house, panoramas, top-down and tour.json")
-    build.add_argument("--fixture", type=Path, default=DEFAULT_SAMPLE_FIXTURE)
-    build.add_argument("--house-out", type=Path, default=DEFAULT_HOUSE_PATH)
-    build.add_argument("--panos-dir", type=Path, default=DEFAULT_PANOS_DIR)
-    build.add_argument("--massing-dir", type=Path, default=DEFAULT_MASSING_DIR)
-
-    tour = sub.add_parser("build-tour", help="Rebuild panos, massing and tour config from state/house.json")
+    tour = sub.add_parser(
+        "build-tour",
+        help="Rebuild placeholder panos and top-down PNGs for a design's house.json",
+    )
     tour.add_argument("--house", type=Path, default=DEFAULT_HOUSE_PATH)
     tour.add_argument("--panos-dir", type=Path, default=DEFAULT_PANOS_DIR)
     tour.add_argument("--massing-dir", type=Path, default=DEFAULT_MASSING_DIR)
-    tour.add_argument("--no-panos", action="store_true", help="Skip regenerating placeholder panoramas")
+    tour.add_argument(
+        "--no-panos",
+        action="store_true",
+        help="Skip placeholder pano regen (use when real panos are already in panos/)",
+    )
 
     validate = sub.add_parser("validate", help="Validate a house.json file")
     validate.add_argument("--house", type=Path, default=DEFAULT_HOUSE_PATH)
@@ -46,10 +46,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "init":
         return _cmd_init(args.plot, args.out)
-    if args.cmd == "build-sample":
-        return _cmd_build_sample(args.fixture, args.house_out, args.panos_dir, args.massing_dir)
     if args.cmd == "build-tour":
-        return _cmd_build_tour(args.house, args.panos_dir, args.massing_dir, skip_panos=args.no_panos)
+        return _cmd_build_tour(
+            args.house, args.panos_dir, args.massing_dir, skip_panos=args.no_panos
+        )
     if args.cmd == "validate":
         return _cmd_validate(args.house)
     parser.error(f"unknown command {args.cmd}")
@@ -62,20 +62,6 @@ def _cmd_init(plot_path: Path, out: Path) -> int:
     save_house(house, out)
     print(f"wrote {out}")
     return 0
-
-
-def _cmd_build_sample(fixture: Path, house_out: Path, panos_dir: Path, massing_dir: Path) -> int:
-    house_out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(fixture, house_out)
-    house = load_house(house_out)
-    issues = validate_house(house)
-    hard = [i for i in issues if i.severity == "hard"]
-    if hard:
-        print("fixture failed validation:", file=sys.stderr)
-        for i in hard:
-            print(f"  [{i.code}] {i.message}", file=sys.stderr)
-        return 1
-    return _emit_artifacts(house, panos_dir, massing_dir, write_panos=True)
 
 
 def _cmd_build_tour(house_path: Path, panos_dir: Path, massing_dir: Path, skip_panos: bool) -> int:
@@ -102,9 +88,6 @@ def _cmd_validate(house_path: Path) -> int:
 
 
 def _emit_artifacts(house: House, panos_dir: Path, massing_dir: Path, write_panos: bool) -> int:
-    web_dir = REPO_ROOT / "web"
-    web_dir.mkdir(parents=True, exist_ok=True)
-
     if write_panos:
         paths = render_all_placeholders(house, panos_dir)
         print(f"wrote {len(paths)} placeholder panoramas -> {panos_dir}")
@@ -118,11 +101,6 @@ def _emit_artifacts(house: House, panos_dir: Path, massing_dir: Path, write_pano
             massing_dir / room.id / "topdown.png",
             highlight_room_id=room.id,
         )
-
-    tour = build_tour(house)
-    tour_path = web_dir / "tour.json"
-    tour_path.write_text(json.dumps(tour, indent=2), encoding="utf-8")
-    print(f"wrote {tour_path}")
     return 0
 
 

@@ -143,8 +143,10 @@ def test_build_tour_custom_pano_url():
 
 
 def test_sample_fixture_builds_clean_tour():
-    fixture = Path(__file__).resolve().parent.parent / "fixtures" / "house.sample.json"
-    house = load_house(fixture)
+    house_path = (
+        Path(__file__).resolve().parent.parent / "designs" / "goa-sample" / "house.json"
+    )
+    house = load_house(house_path)
     tour = build_tour(house)
     assert set(tour["scenes"].keys()) == {"living_room", "kitchen", "master_bedroom"}
     for scene in tour["scenes"].values():
