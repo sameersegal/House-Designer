@@ -15,7 +15,7 @@ from goa_house.state import (
 )
 from goa_house.tour.pannellum import (
     build_tour,
-    door_hotspot_angles,
+    hotspot_angles,
     opening_center,
     wrap_180,
 )
@@ -84,7 +84,7 @@ def test_door_on_east_wall_yaw_is_ninety_when_camera_faces_north():
         openings=[],
     )
     door = Opening(type="door", wall="E", position_m=1.5, width_m=1.0, to_room="x")
-    yaw, pitch = door_hotspot_angles(room, door)
+    yaw, pitch = hotspot_angles(room, door)
     assert yaw == pytest.approx(90.0)
     assert pitch < 0
 
@@ -98,7 +98,7 @@ def test_door_yaw_respects_camera_yaw():
         openings=[],
     )
     door = Opening(type="door", wall="E", position_m=1.5, width_m=1.0, to_room="x")
-    yaw, _ = door_hotspot_angles(room, door)
+    yaw, _ = hotspot_angles(room, door)
     assert yaw == pytest.approx(0.0)
 
 
@@ -183,6 +183,32 @@ def test_stairs_hotspot_marks_direction_and_css():
     assert going_down["sceneId"] == "stairwell_g"
     assert going_down["text"] == "Go down to Stairwell (Ground)"
     assert "goa-stairs-down" in going_down["cssClass"]
+
+
+def test_stairs_up_aims_higher_than_stairs_down():
+    g_stair = Room(
+        id="stairwell_g",
+        name="Stairwell (Ground)",
+        polygon=[(2, 9), (8, 9), (8, 12), (2, 12)],
+        floor=0,
+        camera=Camera(x=5, y=10.5),
+        openings=[Opening(type="stairs", wall="N", position_m=2.0, width_m=1.5, to_room="landing")],
+    )
+    u_landing = Room(
+        id="landing",
+        name="Landing",
+        polygon=[(2, 9), (8, 9), (8, 12), (2, 12)],
+        floor=1,
+        camera=Camera(x=5, y=10.5),
+        openings=[Opening(type="stairs", wall="N", position_m=2.0, width_m=1.5, to_room="stairwell_g")],
+    )
+    house = House(plot=PLOT, rooms=[g_stair, u_landing])
+    tour = build_tour(house)
+    up_pitch = tour["scenes"]["stairwell_g"]["hotSpots"][0]["pitch"]
+    down_pitch = tour["scenes"]["landing"]["hotSpots"][0]["pitch"]
+    # Both pitches negative (target below eye), but DOWN dives much further.
+    assert up_pitch > down_pitch
+    assert down_pitch < -30
 
 
 def test_two_floor_design_builds_clean_tour():

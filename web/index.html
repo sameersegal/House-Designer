@@ -41,6 +41,28 @@
   .panel-block p { margin: 2px 0; color: var(--muted); font-size: 12px; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .chip { background: #2a2d35; border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; font-size: 11px; color: var(--muted); }
+  .topdown .floor-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .topdown .floor-tabs button { flex: 1; background: #2a2d35; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font: inherit; cursor: pointer; }
+  .topdown .floor-tabs button.active { border-color: var(--accent); color: var(--accent); }
+  /* Stair hotspots — distinguish from door pins. */
+  .pnlm-hotspot.goa-stairs {
+    width: 30px; height: 30px;
+    background: rgba(122, 78, 194, 0.85);
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+  }
+  .pnlm-hotspot.goa-stairs::after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 0; height: 0;
+    transform: translate(-50%, -50%);
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+  }
+  .pnlm-hotspot.goa-stairs-up::after { border-bottom: 10px solid #fff; margin-top: -1px; }
+  .pnlm-hotspot.goa-stairs-down::after { border-top: 10px solid #fff; margin-top: 1px; }
 </style>
 </head>
 <body>
@@ -56,6 +78,7 @@
     <ul id="rooms" class="room-list"></ul>
     <div class="topdown">
       <h2>Plan</h2>
+      <div id="floor-tabs" class="floor-tabs"></div>
       <img id="topdown" alt="top-down plan" />
     </div>
   </aside>

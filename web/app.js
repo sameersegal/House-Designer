@@ -82,10 +82,42 @@
     });
 
     const topdown = document.getElementById("topdown");
-    const setTopdown = (sceneId) => {
+    const tabs = document.getElementById("floor-tabs");
+    tabs.innerHTML = "";
+
+    const setTopdownToRoom = (sceneId) => {
+      clearTabActive();
       topdown.src = `/designs/${encodeURIComponent(name)}/massing/${sceneId}/topdown.png?v=${Date.now()}`;
     };
+    const setTopdownToFloor = (floor) => {
+      const url =
+        floor === null
+          ? `/designs/${encodeURIComponent(name)}/massing/topdown.png`
+          : `/designs/${encodeURIComponent(name)}/massing/topdown-floor${floor}.png`;
+      topdown.src = `${url}?v=${Date.now()}`;
+    };
+    const clearTabActive = () => {
+      Array.from(tabs.children).forEach((b) => b.classList.remove("active"));
+    };
+    const addTab = (label, floor) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = label;
+      btn.addEventListener("click", () => {
+        clearTabActive();
+        btn.classList.add("active");
+        setTopdownToFloor(floor);
+      });
+      tabs.appendChild(btn);
+      return btn;
+    };
+    if (floors.length > 1) {
+      addTab("All", null);
+      floors.forEach((f) => addTab(floorLabel(f), f));
+    }
+
     topdown.onerror = () => {
+      topdown.onerror = null;
       topdown.src = `/designs/${encodeURIComponent(name)}/massing/topdown.png`;
     };
 
@@ -94,7 +126,7 @@
         li.classList.toggle("active", li.dataset.sceneId === sceneId);
       });
       setRoomInfo(roomsById[sceneId]);
-      setTopdown(sceneId);
+      setTopdownToRoom(sceneId);
     };
 
     viewer.on("scenechange", updateActive);

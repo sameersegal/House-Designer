@@ -9,6 +9,8 @@ from goa_house.state import CONNECTING_OPENINGS, House, Opening, Room
 
 DEFAULT_PANO_URL = lambda rid: f"/panos/{rid}.jpg"
 DOOR_CENTER_Z_M = 1.0
+STAIRS_UP_TARGET_Z_M = 1.5  # mid-flight when looking up an ascending stair
+STAIRS_DOWN_TARGET_Z_M = 0.0  # floor-level void when looking down
 
 
 def build_tour(
@@ -27,7 +29,12 @@ def build_tour(
             target = house.room_by_id(opening.to_room)
             if target is None:
                 continue
-            yaw, pitch = door_hotspot_angles(room, opening)
+            if opening.type == "stairs":
+                direction_up = target.floor > room.floor
+                target_z = STAIRS_UP_TARGET_Z_M if direction_up else STAIRS_DOWN_TARGET_Z_M
+            else:
+                target_z = DOOR_CENTER_Z_M
+            yaw, pitch = hotspot_angles(room, opening, target_z=target_z)
             hotspot: dict = {
                 "pitch": round(pitch, 2),
                 "yaw": round(yaw, 2),
@@ -64,14 +71,18 @@ def build_tour(
     }
 
 
-def door_hotspot_angles(room: Room, opening: Opening) -> tuple[float, float]:
+def hotspot_angles(
+    room: Room,
+    opening: Opening,
+    target_z: float = DOOR_CENTER_Z_M,
+) -> tuple[float, float]:
     cx, cy = opening_center(room, opening)
     cam = room.camera
     dx, dy = cx - cam.x, cy - cam.y
     bearing_deg = math.degrees(math.atan2(dx, dy))
     yaw = wrap_180(bearing_deg - cam.yaw_deg)
     horiz = math.hypot(dx, dy)
-    pitch = math.degrees(math.atan2(DOOR_CENTER_Z_M - cam.z, horiz)) if horiz > 0 else 0.0
+    pitch = math.degrees(math.atan2(target_z - cam.z, horiz)) if horiz > 0 else 0.0
     return yaw, pitch
 
 
