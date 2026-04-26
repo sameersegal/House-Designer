@@ -62,3 +62,25 @@ def test_cli_build_sample_end_to_end(tmp_path: Path, monkeypatch):
 def test_cli_validate_ok(tmp_path: Path):
     rc = cli_main(["validate", "--house", str(SAMPLE_FIXTURE)])
     assert rc == 0
+
+
+def test_cli_render_room_prompt_only(tmp_path: Path):
+    state_dir = tmp_path / "state"
+    massing_dir = state_dir / "massing"
+    rc = cli_main([
+        "render-room",
+        "living_room",
+        "--house", str(SAMPLE_FIXTURE),
+        "--massing-dir", str(massing_dir),
+        "--panos-dir", str(state_dir / "panos"),
+        "--log-dir", str(state_dir / "logs"),
+        "--requirements", str(state_dir / "requirements.jsonl"),
+        "--prompt-only",
+    ])
+    assert rc == 0
+    assert (massing_dir / "living_room" / "first_person.png").exists()
+    prompt_path = massing_dir / "living_room" / "prompt.txt"
+    assert prompt_path.exists()
+    content = prompt_path.read_text(encoding="utf-8")
+    assert "[STYLE]" in content
+    assert "[OUTPUT SPEC]" in content

@@ -51,30 +51,53 @@ Update on every merged change.
 - `web/index.html` + `web/app.js` — three-pane UI with room switcher, live
   compass needle, per-room info, style chips. Pannellum from CDN.
 
-### Tests (30 green)
+### Build step 4 — Prompt builder + panorama renderer
+- `src/goa_house/agents/prompt_builder.py` — deterministic builder.
+  Sections `[STYLE] [ROOM FACTS] [REQUIREMENTS] [CAMERA] [OUTPUT SPEC]`.
+  Wall labels resolve to 8-point compass via `wall_compass_direction`
+  (uses `plot.north_deg`); camera yaw → `initial_facing`. Requirements
+  filtered to approved + scope `room.id` or `global`. `STYLE_VERSION`
+  constant feeds the idempotency hash.
+- `src/goa_house/render/massing.py::render_first_person_block` —
+  4096×2048 equirectangular massing block. Floor/ceiling polylines
+  sampled along walls, vertical lines at room corners, openings as
+  outlined rectangles (orange door / blue window), seam-wrap. Used as
+  image-conditioning input to gpt-image-2.
+- `src/goa_house/render/panorama.py` — `render_room_panorama`:
+  - `OpenAIImagePanoramaClient` wraps `client.images.edit(model="gpt-image-2", ...)`;
+    pluggable `PanoramaClient` Protocol for tests.
+  - `compute_input_hash(prompt, ref_bytes, style_version)` →
+    `state/panos/{room_id}.manifest.json` `{version, input_hash}`.
+    Same hash + existing latest pointer → `skipped=True`.
+  - Versioned outputs `state/panos/{room_id}.v{n}.jpg`; on success
+    `{room_id}.jpg` points at the latest. `_next_version` defends
+    against missing manifest with on-disk versions.
+  - `validate_panorama` checks 2:1 aspect and seam continuity (mean
+    per-channel diff column-0 vs column-W-1, default threshold 25).
+    On failure the versioned file is kept for inspection but the
+    latest pointer + manifest are not updated.
+  - `RenderSession(cap, warn_threshold)` — per-session pano cap;
+    raises `CostCapExceeded`; warn-log at threshold.
+  - LLM call logging to `state/logs/{ts}_{room_id}_{hash8}.json`.
+- CLI: `goa-house render-room <room_id>` and `render-all`. Both write
+  the prompt + first-person block, then call `render_room_panorama`
+  unless `--prompt-only` is set. Flags: `--cap`, `--seam-threshold`,
+  `--log-dir`, `--requirements`.
+
+### Tests (54 green)
 - State invariants and validation codes (18 cases).
 - Tour builder hotspot math, sample-fixture round trip (8 cases).
 - Placeholder pano aspect, top-down render, full CLI build pipeline (4).
+- Prompt builder: section presence, wall→compass with `north_deg`
+  rotations, room-local camera, requirement filtering by status/scope,
+  determinism, unknown-room error (10 cases).
+- Panorama: hash sensitivity, session cap, seam ok/fail, aspect fail,
+  first-person aspect, idempotency skip, hash-change → new version,
+  post-validation failure keeps versioned file but not latest pointer
+  (13 cases).
+- CLI `render-room --prompt-only` end-to-end (1 case).
 
 ## Pending
-
-### Build step 4 — Prompt builder + panorama renderer
-- [ ] `src/goa_house/agents/prompt_builder.py` — deterministic prompt with
-      `[STYLE] [ROOM FACTS] [REQUIREMENTS] [CAMERA] [OUTPUT SPEC]`. Wall
-      labels resolved to compass directions via `north_deg`.
-- [ ] `src/goa_house/render/massing.py::render_first_person_block` — the
-      crude POV massing input image.
-- [ ] `src/goa_house/render/panorama.py` — `gpt-image-2` call, image
-      conditioned on the massing block, 4096×2048 output.
-- [ ] Post-validation: aspect ratio + seam-continuity (column-0 vs
-      column-W-1 pixel diff with configurable threshold).
-- [ ] Idempotency: hash `(prompt + ref_image_hash + style_version)`; skip
-      regeneration when unchanged.
-- [ ] Versioned outputs `state/panos/{room_id}.v{n}.jpg`; `{room_id}.jpg`
-      points at the latest.
-- [ ] Cost guardrails: per-session pano cap; warn on threshold.
-- [ ] LLM call logging to `state/logs/`.
-- [ ] CLI: `goa-house render-room <room_id>` and `render-all`.
 
 ### Build step 5 — Extractor agent + approval API
 - [ ] Wire `extract_diffs` to call Claude Sonnet 4.6 with the existing
@@ -113,6 +136,9 @@ Update on every merged change.
 - [ ] Directional setbacks for non-axis-aligned plots and `north_deg ≠ 0`.
 - [ ] Opening-on-wall validation for non-axis-aligned room polygons (today
       assumes axis-aligned bounding box).
-- [ ] First-person massing block image (FR5 second half) for image
-      conditioning.
-- [ ] Logging: structured per-call records under `state/logs/` with cost.
+- [ ] Real cost accounting in `state/logs/` (currently logs prompt, hash,
+      image byte count, validation issues — no token/$ figure since the
+      images.edit response doesn't surface usage at call site).
+- [ ] Verify `gpt-image-2` model id + `images.edit` payload shape against
+      the live OpenAI SDK once credentials are wired (only the fake
+      client is exercised in tests).
