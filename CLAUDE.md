@@ -33,6 +33,10 @@ goa-house render-room living_room --quality medium --force # bypass cache
 # validate a house.json (exits non-zero on hard issues)
 goa-house validate --house designs/goa-sample/house.json
 
+# bake every committed design into a static GitHub Pages bundle (no server)
+goa-house build-site --out-dir _site
+# then preview locally with: python -m http.server --directory _site 8080
+
 # tests
 pytest                                       # full suite
 pytest tests/test_state.py                   # one file
@@ -77,13 +81,30 @@ A design may include `designs/<name>/requirements.jsonl` — one approved-status
 ### Viewer — `src/goa_house/api.py` + `web/`
 
 FastAPI app (`goa_house.api:app`) exposes:
-- `GET /designs` → `{"designs": [...]}` listing every subdirectory of `designs/` that contains a `house.json`.
+- `GET /designs.json` → `{"designs": [...]}` listing every subdirectory of `designs/` that contains a `house.json`. (The viewer fetches this via the relative URL `designs.json`.)
 - `GET /designs/{name}/house.json` — pass-through.
-- `GET /designs/{name}/tour.json` — built on the fly with `panorama_url` set to `/designs/{name}/panos/{rid}.jpg`.
+- `GET /designs/{name}/tour.json` — built on the fly with `panorama_url` set to the relative `designs/{name}/panos/{rid}.jpg?v={mtime}` so the same `tour.json` works in both the FastAPI dev server and the static GitHub Pages build.
 - `GET /designs/{name}/panos/{file:path}` and `.../massing/{file:path}` — static via `FileResponse`, with segment validation + resolved-path containment.
 - `GET /static/...` mounts `web/` for the index + JS.
 
-`web/index.html` + `web/app.js` load Pannellum from CDN, populate a header `<select>` with the design names (selection mirrored to `?design=<name>` for shareable URLs), destroy + rebuild the viewer when the selection changes, and group the room list by floor with `Ground floor` / `First floor` headings when the design has more than one floor.
+`web/index.html` + `web/app.js` load Pannellum from CDN, populate a header `<select>` with the design names (selection mirrored to `?design=<name>` for shareable URLs), destroy + rebuild the viewer when the selection changes, and group the room list by floor with `Ground floor` / `First floor` headings when the design has more than one floor. All viewer-side URLs are relative (`designs.json`, `designs/<name>/...`, `static/app.js`) so the same HTML/JS bundle works under FastAPI at `/` and under GitHub Pages at `/<repo>/`.
+
+### Static deploy — `goa-house build-site` + `.github/workflows/deploy-pages.yml`
+
+`goa-house build-site --out-dir _site` materialises a fully static, read-only viewer bundle:
+
+```
+_site/
+  index.html                            # copied verbatim from web/
+  static/app.js                         # copied verbatim from web/
+  designs.json                          # the manifest the viewer fetches at startup
+  designs/<name>/house.json
+  designs/<name>/tour.json              # built statically (relative pano URLs + mtime ?v=)
+  designs/<name>/panos/<rid>.jpg        # .hash / .massing.png debug sidecars are filtered out
+  designs/<name>/massing/...
+```
+
+The companion `deploy-pages.yml` workflow runs on every push to `main`, installs the package, runs `goa-house build-site`, and uploads `_site/` via `actions/upload-pages-artifact` + `actions/deploy-pages`. GitHub Pages must be enabled for the repo with the source set to "GitHub Actions" (Settings → Pages). The deployed site is read-only — there are no mutation endpoints to begin with, so there's nothing to gate; the static bundle just doesn't run any Python.
 
 ### Panorama renderer — `src/goa_house/render/panorama.py`
 

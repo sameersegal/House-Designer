@@ -31,7 +31,7 @@ def client(tmp_path: Path) -> TestClient:
 
 
 def test_list_designs(client: TestClient):
-    r = client.get("/designs")
+    r = client.get("/designs.json")
     assert r.status_code == 200
     assert r.json() == {"designs": ["goa-sample"]}
 
@@ -50,7 +50,7 @@ def test_tour_json_uses_design_scoped_pano_urls(client: TestClient):
     tour = r.json()
     assert tour["default"]["firstScene"] == "living_room"
     for scene_id, scene in tour["scenes"].items():
-        assert scene["panorama"].startswith(f"/designs/goa-sample/panos/{scene_id}.jpg")
+        assert scene["panorama"].startswith(f"designs/goa-sample/panos/{scene_id}.jpg")
 
 
 def test_static_pano_served(client: TestClient):
@@ -90,14 +90,14 @@ def test_empty_designs_dir(tmp_path: Path):
     designs_dir = tmp_path / "designs"
     designs_dir.mkdir()
     client = TestClient(create_app(web_dir=web_dir, designs_dir=designs_dir))
-    assert client.get("/designs").json() == {"designs": []}
+    assert client.get("/designs.json").json() == {"designs": []}
 
 
 def test_real_designs_dir_lists_committed_designs():
     designs_dir = REPO_ROOT / "designs"
     web_dir = REPO_ROOT / "web"
     client = TestClient(create_app(web_dir=web_dir, designs_dir=designs_dir))
-    listed = client.get("/designs").json()["designs"]
+    listed = client.get("/designs.json").json()["designs"]
     assert "goa-sample" in listed
     assert "goa-two-floor" in listed
 

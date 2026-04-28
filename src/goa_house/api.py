@@ -32,7 +32,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="index.html not found")
         return FileResponse(path)
 
-    @app.get("/designs")
+    @app.get("/designs.json")
     def list_designs() -> JSONResponse:
         names = sorted(
             p.name for p in designs_dir.iterdir() if p.is_dir() and (p / "house.json").exists()
@@ -53,7 +53,7 @@ def create_app(
         def _pano_url(rid: str) -> str:
             jpg = panos_dir / f"{rid}.jpg"
             v = int(jpg.stat().st_mtime) if jpg.exists() else 0
-            return f"/designs/{name}/panos/{rid}.jpg?v={v}"
+            return f"designs/{name}/panos/{rid}.jpg?v={v}"
 
         tour = build_tour(house, panorama_url=_pano_url)
         return JSONResponse(tour)

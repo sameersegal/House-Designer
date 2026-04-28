@@ -4,7 +4,7 @@
   document.addEventListener("DOMContentLoaded", main);
 
   async function main() {
-    const designs = await fetch("/designs").then((r) => r.json()).then((d) => d.designs || []);
+    const designs = await fetch("designs.json").then((r) => r.json()).then((d) => d.designs || []);
     if (!designs.length) {
       document.getElementById("panorama").textContent = "No designs found in designs/.";
       return;
@@ -30,8 +30,8 @@
 
   async function loadDesign(name) {
     const [tour, house] = await Promise.all([
-      fetch(`/designs/${encodeURIComponent(name)}/tour.json`).then((r) => r.json()),
-      fetch(`/designs/${encodeURIComponent(name)}/house.json`).then((r) => r.json()),
+      fetch(`designs/${encodeURIComponent(name)}/tour.json`).then((r) => r.json()),
+      fetch(`designs/${encodeURIComponent(name)}/house.json`).then((r) => r.json()),
     ]);
 
     document.getElementById("design-sub").textContent =
@@ -82,10 +82,10 @@
     tabs.innerHTML = "";
 
     const setTopdownToRoom = (sceneId) => {
-      topdown.src = `/designs/${encodeURIComponent(name)}/massing/${sceneId}/topdown.png?v=${Date.now()}`;
+      topdown.src = `designs/${encodeURIComponent(name)}/massing/${sceneId}/topdown.png?v=${Date.now()}`;
     };
     const setTopdownToFloor = (floor) => {
-      topdown.src = `/designs/${encodeURIComponent(name)}/massing/topdown-floor${floor}.png?v=${Date.now()}`;
+      topdown.src = `designs/${encodeURIComponent(name)}/massing/topdown-floor${floor}.png?v=${Date.now()}`;
     };
     const filterListToFloor = (floor) => {
       Array.from(list.children).forEach((li) => {
@@ -114,7 +114,7 @@
 
     topdown.onerror = () => {
       topdown.onerror = null;
-      topdown.src = `/designs/${encodeURIComponent(name)}/massing/topdown.png`;
+      topdown.src = `designs/${encodeURIComponent(name)}/massing/topdown.png`;
     };
 
     const updateActive = (sceneId) => {

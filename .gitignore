@@ -16,6 +16,7 @@ htmlcov/
 
 dist/
 build/
+_site/
 
 .DS_Store
 Thumbs.db
