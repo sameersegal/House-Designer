@@ -1,0 +1,8 @@
+{
+  "boundary": [[0, 0], [12.4, 0], [28.95, -18.9], [0, -18.02]],
+  "north_deg": 0.0,
+  "setbacks": { "front": 3.0, "rear": 3.0, "side": 3.0 },
+  "trees": [
+    { "species": "mango", "x": 10.5, "y": -2.0, "canopy_radius_m": 2.5 }
+  ]
+}

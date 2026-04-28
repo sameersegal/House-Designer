@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Circle as MplCircle
 from matplotlib.patches import Polygon as MplPolygon
 
 from goa_house.state import House, Room
@@ -21,6 +22,8 @@ HIGHLIGHT_COLOR = "#d97757"
 DOOR_COLOR = "#8b5a2b"
 WINDOW_COLOR = "#3b80c2"
 STAIRS_COLOR = "#7a4ec2"
+TREE_CANOPY_COLOR = "#7aa260"
+TREE_TRUNK_COLOR = "#5b3a1f"
 NORTH_ARROW_COLOR = "#333"
 
 
@@ -40,6 +43,7 @@ def render_topdown(
 
     _draw_plot(ax, house)
     _draw_buildable(ax, house)
+    _draw_trees(ax, house)
     for room in rooms:
         _draw_room(ax, room, highlighted=(room.id == highlight_room_id))
         if show_cameras:
@@ -79,6 +83,39 @@ def _draw_buildable(ax, house: House) -> None:
     for g in geoms:
         coords = list(g.exterior.coords)
         ax.add_patch(MplPolygon(coords, closed=True, facecolor=BUILDABLE_COLOR, edgecolor="#888", linewidth=0.8, linestyle="--"))
+
+
+def _draw_trees(ax, house: House) -> None:
+    for tree in house.plot.trees:
+        ax.add_patch(
+            MplCircle(
+                (tree.x, tree.y),
+                tree.canopy_radius_m,
+                facecolor=TREE_CANOPY_COLOR,
+                edgecolor=TREE_TRUNK_COLOR,
+                alpha=0.45,
+                linewidth=1.0,
+                zorder=1.5,
+            )
+        )
+        ax.plot(
+            tree.x,
+            tree.y,
+            marker="o",
+            color=TREE_TRUNK_COLOR,
+            markersize=4,
+            zorder=2,
+        )
+        ax.text(
+            tree.x,
+            tree.y - tree.canopy_radius_m - 0.4,
+            tree.species,
+            ha="center",
+            va="top",
+            fontsize=8,
+            color="#3a4a26",
+            zorder=2,
+        )
 
 
 def _draw_room(ax, room: Room, highlighted: bool) -> None:

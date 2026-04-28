@@ -54,11 +54,12 @@
     });
 
     const roomsById = Object.fromEntries(house.rooms.map((r) => [r.id, r]));
+    const tourableRooms = house.rooms.filter((r) => r.tourable !== false);
     const list = document.getElementById("rooms");
     list.innerHTML = "";
 
     const byFloor = new Map();
-    house.rooms.forEach((r) => {
+    tourableRooms.forEach((r) => {
       if (!byFloor.has(r.floor)) byFloor.set(r.floor, []);
       byFloor.get(r.floor).push(r);
     });

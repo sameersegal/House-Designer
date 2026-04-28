@@ -48,10 +48,14 @@ def create_app(
     def design_tour(name: str) -> JSONResponse:
         house_path = _design_file(designs_dir, name, "house.json")
         house = load_house(house_path)
-        tour = build_tour(
-            house,
-            panorama_url=lambda rid, _name=name: f"/designs/{_name}/panos/{rid}.jpg",
-        )
+        panos_dir = house_path.parent / "panos"
+
+        def _pano_url(rid: str) -> str:
+            jpg = panos_dir / f"{rid}.jpg"
+            v = int(jpg.stat().st_mtime) if jpg.exists() else 0
+            return f"/designs/{name}/panos/{rid}.jpg?v={v}"
+
+        tour = build_tour(house, panorama_url=_pano_url)
         return JSONResponse(tour)
 
     @app.get("/designs/{name}/panos/{filename:path}")

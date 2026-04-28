@@ -14,6 +14,7 @@ from goa_house.state import (
     Requirement,
     Room,
     Setbacks,
+    Tree,
     append_requirement,
     load_house,
     load_requirements,
@@ -96,9 +97,27 @@ def test_opening_on_wall_passes():
     assert validate_house(house) == []
 
 
-def test_door_requires_to_room():
-    with pytest.raises(ValidationError):
-        Opening(type="door", wall="E", position_m=1.0, width_m=0.9)
+def test_exterior_door_allowed_without_to_room():
+    opening = Opening(type="door", wall="E", position_m=1.0, width_m=0.9)
+    assert opening.to_room is None
+
+
+def test_exterior_door_does_not_break_connectivity():
+    a = _room(
+        id="master_bedroom",
+        polygon=[(4, 4), (8, 4), (8, 8), (4, 8)],
+        openings=[
+            Opening(type="door", wall="N", position_m=1.0, width_m=0.9),
+            Opening(type="door", wall="E", position_m=1.0, width_m=0.9, to_room="corridor"),
+        ],
+    )
+    b = _room(
+        id="corridor",
+        polygon=[(8, 4), (12, 4), (12, 8), (8, 8)],
+        camera=Camera(x=10, y=6),
+        openings=[Opening(type="door", wall="W", position_m=1.0, width_m=0.9, to_room="master_bedroom")],
+    )
+    assert validate_house(House(plot=PLOT, rooms=[a, b])) == []
 
 
 def test_window_rejects_to_room():
@@ -162,8 +181,25 @@ def test_plot_fixture_loads(tmp_path: Path):
     data = json.loads(fixture.read_text())
     plot = Plot.model_validate(data)
     assert plot.setbacks.front == 3.0
+    assert plot.trees == []
     house = House(plot=plot)
     assert validate_house(house) == []
+
+
+def test_plot_accepts_trees():
+    plot = Plot(
+        boundary=[(0, 0), (20, 0), (20, 15), (0, 15)],
+        setbacks=Setbacks(front=3, rear=3, side=2),
+        trees=[Tree(species="mango", x=10, y=12)],
+    )
+    assert len(plot.trees) == 1
+    assert plot.trees[0].species == "mango"
+    assert plot.trees[0].canopy_radius_m == 3.0
+
+
+def test_tree_canopy_radius_must_be_positive():
+    with pytest.raises(ValidationError):
+        Tree(species="mango", x=0, y=0, canopy_radius_m=0)
 
 
 def test_save_house_writes_snapshots(tmp_path: Path):

@@ -1,0 +1,8 @@
+{
+  "_comment": "Verbatim site survey data. Boundary + trees are now in plot.json (loaded by the app). The explicit 3m setback polygon is preserved here for reference; the app derives an equivalent buildable envelope via buffer(-3) on the boundary.",
+  "boundary": [[0, 0], [12.4, 0], [28.95, -18.9], [0, -18.02]],
+  "setback_polygon_3m": [[11.04, -3.0], [22.15, -15.69], [3.0, -15.11], [3.0, -3.0]],
+  "trees": [
+    { "species": "mango", "x": 10.5, "y": -2.0 }
+  ]
+}

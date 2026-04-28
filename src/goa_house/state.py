@@ -35,10 +35,18 @@ class Setbacks(BaseModel):
     side: float = Field(ge=0)
 
 
+class Tree(BaseModel):
+    species: str
+    x: float
+    y: float
+    canopy_radius_m: float = Field(default=3.0, gt=0)
+
+
 class Plot(BaseModel):
     boundary: list[Point] = Field(min_length=3)
     north_deg: float = 0.0
     setbacks: Setbacks
+    trees: list[Tree] = Field(default_factory=list)
 
     @field_validator("boundary")
     @classmethod
@@ -64,8 +72,8 @@ class Opening(BaseModel):
 
     @model_validator(mode="after")
     def _cross_checks(self) -> "Opening":
-        if self.type in CONNECTING_OPENINGS and not self.to_room:
-            raise ValueError(f"{self.type} openings must reference a to_room")
+        if self.type == "stairs" and not self.to_room:
+            raise ValueError("stairs openings must reference a to_room")
         if self.type == "window" and self.to_room is not None:
             raise ValueError("window openings must not reference to_room")
         return self
@@ -86,6 +94,7 @@ class Room(BaseModel):
     ceiling_height_m: float = Field(gt=0, default=3.0)
     openings: list[Opening] = Field(default_factory=list)
     camera: Camera
+    tourable: bool = True
 
     @field_validator("id")
     @classmethod

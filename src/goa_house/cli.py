@@ -7,7 +7,15 @@ from pathlib import Path
 
 from goa_house.render.massing import render_topdown
 from goa_house.render.placeholder import render_all_placeholders
-from goa_house.state import House, Plot, load_house, save_house, validate_house
+from goa_house.state import (
+    House,
+    Plot,
+    Requirement,
+    load_house,
+    load_requirements,
+    save_house,
+    validate_house,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_DESIGNS_DIR = REPO_ROOT / "designs"
@@ -130,9 +138,15 @@ def _cmd_render_room(
     if room is None:
         print(f"unknown room: {room_id}", file=sys.stderr)
         return 1
+    if not room.tourable:
+        print(f"room is not tourable; skipping: {room_id}", file=sys.stderr)
+        return 1
+    requirements = _design_requirements(house_path)
     kwargs = _render_kwargs(quality, size, force)
     try:
-        out = render_panorama(house, room, panos_dir / f"{room.id}.jpg", **kwargs)
+        out = render_panorama(
+            house, room, panos_dir / f"{room.id}.jpg", requirements, **kwargs
+        )
     except ImageGenError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -150,18 +164,27 @@ def _cmd_render_all(
     from goa_house.render.panorama import ImageGenError, render_panorama
 
     house = load_house(house_path)
-    if not house.rooms:
-        print("no rooms to render", file=sys.stderr)
+    tourable = [r for r in house.rooms if r.tourable]
+    if not tourable:
+        print("no tourable rooms to render", file=sys.stderr)
         return 1
+    requirements = _design_requirements(house_path)
     kwargs = _render_kwargs(quality, size, force)
-    for room in house.rooms:
+    for room in tourable:
         try:
-            out = render_panorama(house, room, panos_dir / f"{room.id}.jpg", **kwargs)
+            out = render_panorama(
+                house, room, panos_dir / f"{room.id}.jpg", requirements, **kwargs
+            )
         except ImageGenError as exc:
             print(str(exc), file=sys.stderr)
             return 1
         print(f"wrote {out}")
     return 0
+
+
+def _design_requirements(house_path: Path) -> list[Requirement]:
+    """Load `<design>/requirements.jsonl` next to the house file. Missing file → []."""
+    return load_requirements(house_path.parent / "requirements.jsonl")
 
 
 def _render_kwargs(quality: str | None, size: str | None, force: bool) -> dict:

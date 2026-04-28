@@ -50,7 +50,7 @@ def test_tour_json_uses_design_scoped_pano_urls(client: TestClient):
     tour = r.json()
     assert tour["default"]["firstScene"] == "living_room"
     for scene_id, scene in tour["scenes"].items():
-        assert scene["panorama"] == f"/designs/goa-sample/panos/{scene_id}.jpg"
+        assert scene["panorama"].startswith(f"/designs/goa-sample/panos/{scene_id}.jpg")
 
 
 def test_static_pano_served(client: TestClient):

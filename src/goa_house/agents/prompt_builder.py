@@ -49,10 +49,22 @@ _ROOM_CHARACTER: dict[str, str] = {
         "flight of polished rosewood treads with a turned-baluster railing and a hand-rail. "
         "No bedroom or living-room furniture; a small console with a vase or a wall sconce is enough."
     ),
+    "stairs": (
+        "Stairwell. The stairs themselves must be the dominant element: a single straight or quarter-turn "
+        "flight of polished rosewood treads with a turned-baluster railing and a hand-rail. "
+        "No bedroom or living-room furniture; a small console with a vase or a wall sconce is enough."
+    ),
     "landing": (
         "Upper landing / corridor. Show the top of the stair flight emerging through a balustraded "
         "opening in the floor; a console table with a vase, an azulejo tile panel on the wall, "
         "and a sconce or hanging lantern. No bedroom furniture."
+    ),
+    "corridor": (
+        "Goan upper corridor. A narrow upper-floor passageway running alongside a balustraded void "
+        "open to a double-height living-dining room below; polished terracotta-tile floor, "
+        "a rosewood console with a brass urli or vase, framed Indo-Portuguese lithographs on the wall, "
+        "a hanging brass lantern, doorways visible to bedrooms along the run. The void / balustrade "
+        "must read clearly — this is NOT a closed room and NOT a bedroom."
     ),
     "study": (
         "Study. A rosewood writing desk with a green-shade banker's lamp and a leather-bound book stack, "
@@ -61,6 +73,27 @@ _ROOM_CHARACTER: dict[str, str] = {
     "veranda": (
         "Goan veranda / balcao. Built-in masonry seats along the parapet, low railing, "
         "potted palms, hanging lanterns. View opens to the garden."
+    ),
+    "balcao": (
+        "Goan balcao / verandah. A covered open-air verandah with a low masonry parapet, "
+        "wide arched openings to the garden framed by chamfered timber posts, an azulejo-tile dado below the parapet, "
+        "built-in masonry seats along the parapet with embroidered cushions, hanging brass-and-glass lanterns, "
+        "potted palms and a tulsi planter on the floor, a slow ceiling fan, glimpses of the mango-tree canopy "
+        "through the open arches. The balcao must read unmistakably as a covered outdoor verandah at first glance — "
+        "open arches, garden visible beyond, NOT an interior room."
+    ),
+    "utility": (
+        "Goan utility / back-of-house service room. A working room: a stone or concrete laundry sink against one wall, "
+        "a built-in masonry counter, hanging copper utensils, terracotta storage jars on the floor, "
+        "a wooden rack with folded cotton linens, a single bare bulb or wall sconce, plain terracotta-tile floor, "
+        "plain lime-plaster walls (NO decorative azulejo, NO carved rosewood furniture). "
+        "Plain, functional, working. NOT a kitchen, NOT a living room."
+    ),
+    "powder": (
+        "Goan powder room — a small half-bath / WC. Tight and intimate: a single white ceramic toilet, "
+        "a small wall-hung basin with a brass tap, a small mirror with a simple wooden frame, an azulejo-tile dado "
+        "on one wall, brass hooks for hand towels, terracotta-tile floor, a single brass wall sconce. "
+        "NOT a full bathroom, NOT a bedroom — show the toilet and basin clearly."
     ),
 }
 
