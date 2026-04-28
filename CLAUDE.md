@@ -53,7 +53,7 @@ ruff check .
 
 Cross-cutting invariants enforced by validators — keep them when extending:
 - Room ids are snake_case (`^[a-z][a-z0-9_]*$`) and unique within a House.
-- `Opening.type` is one of `door | window | stairs`. Doors and stairs require `to_room`; windows forbid it. The `CONNECTING_OPENINGS = ("door", "stairs")` constant centralises that grouping.
+- `Opening.type` is one of `door | window | stairs`. Stairs require `to_room`; windows forbid it; doors *to another room* set `to_room`, but doors *without* `to_room` are exterior entries (no graph edge, silently skipped by the tour builder). The `CONNECTING_OPENINGS = ("door", "stairs")` constant centralises that grouping.
 - `validate_house()` runs *semantic* checks beyond Pydantic: room-inside-plot, setback envelope, **per-floor** room overlap (rooms at the same xy on different floors don't trigger `room_overlap`), opening-on-wall (axis-aligned bbox walls N/S/E/W), `door_target_missing` / `stairs_target_missing`, `door_crosses_floors` (doors must stay on a single floor), `stairs_same_floor` (stairs must connect different floors), and door-or-stairs graph connectivity (every room reachable from `rooms[0]`). Hard issues block CLI commands.
 - `buildable_area()` has a fast path for axis-aligned rectangles with `north_deg == 0`; rotated/non-rectangular plots fall back to a `Polygon.buffer(-max(setback))` inset, which is approximate. Setbacks are 2D and apply identically to every floor today.
 
@@ -70,7 +70,9 @@ Persistence: `save_house()` writes `house.json` AND a sibling `house.vN.json` sn
 
 ### Designs folder convention — `designs/<name>/`
 
-Each subdirectory is one self-contained house design: `house.json` + `panos/<room_id>.jpg` + `massing/topdown.png` + `massing/<room_id>/topdown.png` (+ `massing/topdown-floor{N}.png` for multi-floor). `goa-sample/` (single floor, real `gpt-image-2` panos) and `goa-two-floor/` (8 rooms, paired stairs hotspots, placeholder panos) are the committed examples. The `_safe_segment` check in [api.py](src/goa_house/api.py) plus `Path.resolve().relative_to()` guards against path traversal in the design name and any nested filename.
+Each subdirectory is one self-contained house design: `house.json` + `panos/<room_id>.jpg` + `massing/topdown.png` + `massing/<room_id>/topdown.png` (+ `massing/topdown-floor{N}.png` for multi-floor) (+ optional `requirements.jsonl`). `goa-sample/` (single floor, real `gpt-image-2` panos) and `goa-two-floor/` (8 rooms, paired stairs hotspots, placeholder panos) are the committed examples. The `_safe_segment` check in [api.py](src/goa_house/api.py) plus `Path.resolve().relative_to()` guards against path traversal in the design name and any nested filename.
+
+A design may include `designs/<name>/requirements.jsonl` — one approved-status `Requirement` per line. `goa-house render-room` / `render-all` automatically loads that file (via `_design_requirements()` in `cli.py`) and forwards the records to `render_panorama()`, where the prompt builder filters them by `scope in (room.id, "global")` and emits them in the `[REQUIREMENTS]` section. This is how design-time intent (zone descriptions inside an open-plan room, shared palette across the whole house, etc.) is fed into the panorama prompts without baking it into `_ROOM_CHARACTER`.
 
 ### Viewer — `src/goa_house/api.py` + `web/`
 

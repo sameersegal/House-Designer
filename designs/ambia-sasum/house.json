@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "plot": {
+    "boundary": [[0, 0], [12.4, 0], [28.95, -18.9], [0, -18.02]],
+    "north_deg": 0.0,
+    "setbacks": { "front": 3.0, "rear": 3.0, "side": 3.0 },
+    "trees": [
+      { "species": "mango", "x": 10.5, "y": -2.0, "canopy_radius_m": 2.5 }
+    ]
+  },
+  "rooms": [
+    {
+      "id": "balcao_g",
+      "name": "Balcao (Ground)",
+      "polygon": [[3, -5], [11, -5], [11, -3], [3, -3]],
+      "floor": 0,
+      "ceiling_height_m": 3.2,
+      "openings": [
+        { "type": "window", "wall": "N", "position_m": 2.0, "width_m": 4.0, "height_m": 1.4 },
+        { "type": "door",   "wall": "S", "position_m": 3.55, "width_m": 0.9, "to_room": "living_dining" }
+      ],
+      "camera": { "x": 7.0, "y": -4.0, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "living_dining",
+      "name": "Living / Dining / Kitchen",
+      "polygon": [[3, -12], [11, -12], [11, -5], [3, -5]],
+      "floor": 0,
+      "ceiling_height_m": 4.5,
+      "openings": [
+        { "type": "door",   "wall": "N", "position_m": 3.55, "width_m": 0.9, "to_room": "balcao_g" },
+        { "type": "door",   "wall": "S", "position_m": 0.5, "width_m": 0.9, "to_room": "utility" },
+        { "type": "door",   "wall": "S", "position_m": 4.4, "width_m": 0.7, "to_room": "powder" },
+        { "type": "door",   "wall": "S", "position_m": 5.5, "width_m": 0.9, "to_room": "stairs_g" },
+        { "type": "door",   "wall": "E", "position_m": 1.0, "width_m": 0.9, "to_room": "bedroom_g" },
+        { "type": "window", "wall": "E", "position_m": 2.5, "width_m": 1.5, "height_m": 1.4 },
+        { "type": "door",   "wall": "E", "position_m": 5.5, "width_m": 1.0 },
+        { "type": "window", "wall": "W", "position_m": 2.0, "width_m": 1.5, "height_m": 1.4 },
+        { "type": "window", "wall": "W", "position_m": 4.5, "width_m": 1.5, "height_m": 1.4 }
+      ],
+      "camera": { "x": 7.0, "y": -8.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "utility",
+      "name": "Utility",
+      "polygon": [[3, -15], [7, -15], [7, -12], [3, -12]],
+      "floor": 0,
+      "ceiling_height_m": 2.8,
+      "openings": [
+        { "type": "door",   "wall": "N", "position_m": 0.5, "width_m": 0.9, "to_room": "living_dining" },
+        { "type": "window", "wall": "S", "position_m": 1.0, "width_m": 1.2, "height_m": 0.8 },
+        { "type": "window", "wall": "W", "position_m": 0.3, "width_m": 0.8, "height_m": 1.2 },
+        { "type": "door",   "wall": "W", "position_m": 1.8, "width_m": 0.9 }
+      ],
+      "camera": { "x": 5.0, "y": -13.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "powder",
+      "name": "Powder Room",
+      "polygon": [[7, -15], [8.5, -15], [8.5, -12], [7, -12]],
+      "floor": 0,
+      "ceiling_height_m": 2.8,
+      "openings": [
+        { "type": "door",   "wall": "N", "position_m": 0.4, "width_m": 0.7, "to_room": "living_dining" },
+        { "type": "window", "wall": "S", "position_m": 0.5, "width_m": 0.5, "height_m": 0.6 }
+      ],
+      "camera": { "x": 7.75, "y": -13.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "stairs_g",
+      "name": "Stairwell (Ground)",
+      "polygon": [[8.5, -15], [11, -15], [11, -12], [8.5, -12]],
+      "floor": 0,
+      "ceiling_height_m": 3.2,
+      "tourable": false,
+      "openings": [
+        { "type": "door",   "wall": "N", "position_m": 0.0, "width_m": 0.9, "to_room": "living_dining" },
+        { "type": "stairs", "wall": "N", "position_m": 1.0, "width_m": 1.5, "to_room": "landing_u" }
+      ],
+      "camera": { "x": 9.75, "y": -13.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "bedroom_g",
+      "name": "Bedroom (Ground)",
+      "polygon": [[11, -15], [14, -15], [14, -10], [11, -10]],
+      "floor": 0,
+      "ceiling_height_m": 3.0,
+      "openings": [
+        { "type": "door",   "wall": "W", "position_m": 4.0, "width_m": 0.9, "to_room": "living_dining" },
+        { "type": "door",   "wall": "E", "position_m": 0.3, "width_m": 0.9, "to_room": "bath_g" },
+        { "type": "window", "wall": "N", "position_m": 0.5, "width_m": 2.0, "height_m": 1.4 },
+        { "type": "window", "wall": "S", "position_m": 1.0, "width_m": 1.5, "height_m": 1.4 }
+      ],
+      "camera": { "x": 12.5, "y": -12.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "bath_g",
+      "name": "Bath (Ground)",
+      "polygon": [[14, -15], [16, -15], [16, -10], [14, -10]],
+      "floor": 0,
+      "ceiling_height_m": 2.8,
+      "openings": [
+        { "type": "door",   "wall": "W", "position_m": 0.3, "width_m": 0.9, "to_room": "bedroom_g" },
+        { "type": "window", "wall": "E", "position_m": 2.0, "width_m": 0.6, "height_m": 1.2 }
+      ],
+      "camera": { "x": 15.0, "y": -12.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "balcao_u",
+      "name": "Balcao (Upper)",
+      "polygon": [[3, -5], [9, -5], [9, -3], [3, -3]],
+      "floor": 1,
+      "ceiling_height_m": 3.0,
+      "openings": [
+        { "type": "window", "wall": "N", "position_m": 0.3, "width_m": 1.7, "height_m": 1.6 },
+        { "type": "window", "wall": "N", "position_m": 2.3, "width_m": 1.4, "height_m": 1.6 },
+        { "type": "window", "wall": "N", "position_m": 4.0, "width_m": 1.7, "height_m": 1.6 },
+        { "type": "window", "wall": "W", "position_m": 0.5, "width_m": 1.0, "height_m": 1.4 },
+        { "type": "door",   "wall": "E", "position_m": 0.0, "width_m": 0.9, "to_room": "corridor_u" }
+      ],
+      "camera": { "x": 6.0, "y": -4.0, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "corridor_u",
+      "name": "Upper Corridor",
+      "polygon": [[9, -12], [11, -12], [11, -3], [9, -3]],
+      "floor": 1,
+      "ceiling_height_m": 3.0,
+      "openings": [
+        { "type": "door", "wall": "W", "position_m": 7.0, "width_m": 0.9, "to_room": "balcao_u" },
+        { "type": "door", "wall": "W", "position_m": 1.0, "width_m": 0.9, "to_room": "bedroom_1" },
+        { "type": "door", "wall": "S", "position_m": 0.5, "width_m": 0.9, "to_room": "landing_u" },
+        { "type": "door", "wall": "E", "position_m": 1.0, "width_m": 0.9, "to_room": "bedroom_2_u" }
+      ],
+      "camera": { "x": 10.0, "y": -7.0, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "bath_1",
+      "name": "Bath 1",
+      "polygon": [[3, -15], [5, -15], [5, -10], [3, -10]],
+      "floor": 1,
+      "ceiling_height_m": 2.8,
+      "openings": [
+        { "type": "door",   "wall": "E", "position_m": 0.3, "width_m": 0.7, "to_room": "bedroom_1" },
+        { "type": "window", "wall": "W", "position_m": 4.0, "width_m": 0.6, "height_m": 1.2 }
+      ],
+      "camera": { "x": 4.0, "y": -12.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "bedroom_1",
+      "name": "Bedroom 1",
+      "polygon": [[5, -15], [9, -15], [9, -10], [5, -10]],
+      "floor": 1,
+      "ceiling_height_m": 3.0,
+      "openings": [
+        { "type": "door",   "wall": "W", "position_m": 0.3, "width_m": 0.7, "to_room": "bath_1" },
+        { "type": "door",   "wall": "E", "position_m": 4.0, "width_m": 0.9, "to_room": "corridor_u" },
+        { "type": "window", "wall": "S", "position_m": 0.3, "width_m": 1.5, "height_m": 1.4 },
+        { "type": "window", "wall": "S", "position_m": 2.2, "width_m": 1.5, "height_m": 1.4 }
+      ],
+      "camera": { "x": 7.0, "y": -12.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "landing_u",
+      "name": "Landing",
+      "polygon": [[9, -15], [11, -15], [11, -12], [9, -12]],
+      "floor": 1,
+      "ceiling_height_m": 3.0,
+      "openings": [
+        { "type": "door",   "wall": "N", "position_m": 0.5, "width_m": 0.9, "to_room": "corridor_u" },
+        { "type": "stairs", "wall": "S", "position_m": 0.25, "width_m": 1.5, "to_room": "stairs_g" }
+      ],
+      "camera": { "x": 10.0, "y": -13.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "bedroom_2_u",
+      "name": "Bedroom 2",
+      "polygon": [[11, -15], [14, -15], [14, -10], [11, -10]],
+      "floor": 1,
+      "ceiling_height_m": 3.0,
+      "openings": [
+        { "type": "door",   "wall": "W", "position_m": 4.0, "width_m": 0.9, "to_room": "corridor_u" },
+        { "type": "door",   "wall": "E", "position_m": 0.3, "width_m": 0.9, "to_room": "bath_2_u" },
+        { "type": "window", "wall": "N", "position_m": 0.5, "width_m": 2.0, "height_m": 1.4 },
+        { "type": "window", "wall": "S", "position_m": 1.0, "width_m": 1.5, "height_m": 1.4 }
+      ],
+      "camera": { "x": 12.5, "y": -12.5, "z": 1.6, "yaw_deg": 0.0 }
+    },
+    {
+      "id": "bath_2_u",
+      "name": "Bath 2",
+      "polygon": [[14, -15], [16, -15], [16, -10], [14, -10]],
+      "floor": 1,
+      "ceiling_height_m": 2.8,
+      "openings": [
+        { "type": "door",   "wall": "W", "position_m": 0.3, "width_m": 0.9, "to_room": "bedroom_2_u" },
+        { "type": "window", "wall": "E", "position_m": 2.0, "width_m": 0.6, "height_m": 1.2 }
+      ],
+      "camera": { "x": 15.0, "y": -12.5, "z": 1.6, "yaw_deg": 0.0 }
+    }
+  ],
+  "style": {
+    "period": "Indo-Portuguese",
+    "materials": [
+      "lime plaster",
+      "Mangalore tile",
+      "rosewood",
+      "oyster shell windows",
+      "azulejo"
+    ],
+    "lighting": "late afternoon, warm",
+    "mood_tokens": ["coastal humid", "tropical shade", "cross-ventilated", "tree-oriented"]
+  }
+}

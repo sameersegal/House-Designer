@@ -17,17 +17,18 @@ def build_tour(
     house: House,
     panorama_url: Callable[[str], str] = DEFAULT_PANO_URL,
 ) -> dict:
-    if not house.rooms:
+    tourable_rooms = [r for r in house.rooms if r.tourable]
+    if not tourable_rooms:
         return {"default": {"firstScene": None, "autoLoad": False, "compass": True}, "scenes": {}}
 
     scenes: dict[str, dict] = {}
-    for room in house.rooms:
+    for room in tourable_rooms:
         hotspots = []
         for opening in room.openings:
             if opening.type not in CONNECTING_OPENINGS or not opening.to_room:
                 continue
             target = house.room_by_id(opening.to_room)
-            if target is None:
+            if target is None or not target.tourable:
                 continue
             if opening.type == "stairs":
                 direction_up = target.floor > room.floor
@@ -61,7 +62,7 @@ def build_tour(
 
     return {
         "default": {
-            "firstScene": house.rooms[0].id,
+            "firstScene": tourable_rooms[0].id,
             "autoLoad": True,
             "compass": True,
             "sceneFadeDuration": 600,
