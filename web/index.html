@@ -17,7 +17,8 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
   .app { display: grid; grid-template-columns: 280px 1fr 320px; grid-template-rows: 48px 1fr; height: 100vh; }
-  .app[data-chat-mode="floating"] { grid-template-columns: 280px 1fr; }
+  .app[data-chat-mode="floating"] { grid-template-columns: 1fr; }
+  .app[data-chat-mode="floating"] aside.left { display: none; }
   header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
   header h1 { font-size: 15px; font-weight: 600; margin: 0; }
   header .sub { color: var(--muted); font-size: 12px; }
