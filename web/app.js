@@ -33,6 +33,8 @@
     });
     document.getElementById("new-chat-btn").addEventListener("click", newChat);
 
+    initChatMode();
+
     await loadDesign(initial);
   }
 
@@ -387,6 +389,34 @@
     }
     document.getElementById("chat-log").innerHTML = "";
     toast("Started a new chat.", "ok");
+  }
+
+  // ---- Chat mode (docked vs floating) -----------------------------------
+
+  const CHAT_MODE_KEY = "goa-house:chat-mode";
+
+  function initChatMode() {
+    const saved = localStorage.getItem(CHAT_MODE_KEY);
+    setChatMode(saved === "floating" ? "floating" : "docked");
+    document.getElementById("chat-mode-toggle").addEventListener("click", () => {
+      const app = document.querySelector(".app");
+      const next = app.dataset.chatMode === "floating" ? "docked" : "floating";
+      setChatMode(next);
+    });
+  }
+
+  function setChatMode(mode) {
+    const app = document.querySelector(".app");
+    app.dataset.chatMode = mode;
+    localStorage.setItem(CHAT_MODE_KEY, mode);
+    const btn = document.getElementById("chat-mode-toggle");
+    if (mode === "floating") {
+      btn.textContent = "⇱ Dock";
+      btn.title = "Dock the chat to the right side";
+    } else {
+      btn.textContent = "⇲ Float";
+      btn.title = "Float the chat as a bottom bar";
+    }
   }
 
   // ---- SSE parsing -------------------------------------------------------
