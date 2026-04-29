@@ -53,12 +53,33 @@ with status transitions `proposed → approved | rejected | superseded`.
 - **FR8 — Tour assembly.** Generate Pannellum config from `house.json`: one
   scene per room; door hotspots from camera↔opening geometry; compass HUD
   driven by `north_deg` and per-scene `northOffset`.
-- **FR9 — Web UI.** Single page, three panes: prompt + requirements log
-  (left), Pannellum viewer + room switcher + compass (center), pending
-  diffs panel with approve/reject and inline conflict warnings (right).
+- **FR9 — Web UI.** Single page, three panes: top-down plan +
+  requirements log (left), Pannellum viewer + room switcher + compass
+  (center), and a **chat log** with inline approve/reject controls
+  (right). The chat replaces the standalone "prompt" + "pending diffs"
+  panels; user prompts and Claude's responses (status updates + diff
+  cards or clarification bubbles) appear chronologically. Naive-user
+  surface: tool calls are translated to friendly status lines (e.g.
+  `validate_projection` → "Checking that it fits…"); raw model JSON,
+  thinking blocks, and tool inputs are not shown.
 - **FR10 — Undo.** Each approved change writes a new `house.v{n}.json`
   snapshot and a new requirements entry. `POST /undo` reverts to the
   previous snapshot and marks the latest requirements as superseded.
+- **FR11 — Conversation continuity.** Each design has at most one
+  active Claude Agent SDK session at a time. Successive `POST /prompt`
+  calls within the same session resume that session (`resume=<sid>`)
+  so Claude remembers prior turns. The mapping
+  `design → current_session_id` is persisted on disk so it survives
+  server restarts. A "New chat" action rotates to a fresh session id
+  without deleting the old one (old sessions remain in the SDK's
+  on-disk store for audit/debug).
+- **FR12 — Streaming progress.** `POST /prompt` returns a Server-Sent
+  Events stream so the UI can show progress as the agent works:
+  `{"type":"status", "text":"…"}` for each tool call mapped to a
+  friendly label; `{"type":"result", "extractor_result":{…}}` for the
+  final structured output; `{"type":"error", "message":"…"}` on
+  failure. A non-streaming JSON variant remains available for tests
+  and programmatic callers.
 
 ## Agent contracts
 

@@ -106,27 +106,71 @@ Update on every merged change.
 > designs/goa-two-floor/panos --force` to pick up the cleaned-up
 > placeholder + the [ROOM CHARACTER] / stair-direction prompt blocks.
 
+### Build step 5 — Extractor agent + approval API
+- `src/goa_house/diffs.py` — `RequirementDiff` schema with a
+  discriminated-union `Mutation` (add/update/remove room, add/remove
+  opening), `apply_diffs()` projection, and `validate_projection()`
+  that runs `validate_house()` on the projection. Pure code; the
+  terminal contract for both the LLM and the approval endpoint.
+- `src/goa_house/agents/extractor.py` — `extract_diffs()` wired via
+  `claude-agent-sdk`. Four in-process MCP tools: `get_house`,
+  `list_recent_requirements`, `validate_projection`,
+  `room_geometry_hint`. The geometry-hint tool computes axis-aligned
+  polygons + cameras at named corners of the buildable envelope so
+  the model never invents coordinates. Final answer wrapped in
+  `<output>...</output>` and parsed back to `ExtractorResult`.
+- `src/goa_house/approval.py` + endpoints in `api.py`:
+  - `POST /designs/{name}/prompt` — runs extractor; returns diffs
+    or clarification; no mutation.
+  - `POST /designs/{name}/requirements/approve` — validates the
+    projected state, writes `house.json` + a `house.vN.json`
+    snapshot, appends approved Requirement records, marks
+    superseded prior requirements via in-place rewrite, and
+    re-renders placeholder panos + topdowns for affected rooms only.
+    Hard validation issues → 409 with the issue list.
+  - `POST /designs/{name}/requirements/reject` — appends rejected
+    Requirement records with optional `rejection_reason`; never
+    touches `house.json`.
+  - `GET /designs/{name}/requirements.jsonl` — read-only listing.
+- `state.Requirement.rejection_reason: Optional[str]` field added —
+  backwards-compatible (defaults to None).
+- Step 6 conflict detection lands inside the extractor's own loop
+  via `validate_projection`: the agent self-checks and revises until
+  the projection is clean before emitting the final answer. The
+  approve endpoint runs the same check as a server-side gate.
+- Web UI Phase 1: prompt textarea + Send button (Cmd/Ctrl+Enter) on
+  the left pane; pending-diffs cards on the right with checkbox
+  selection, approve/reject buttons, optional rejection reason,
+  blocked-validation banner, toasts, and a recent-requirements log.
+  Lands as the v1 of the user-facing surface; replaced by the chat
+  log in build step 6.
+- Live integration verified end-to-end against a Claude Pro/Max
+  subscription session: geometry prompt → 2 coordinated diffs;
+  vague prompt → clarification; material prompt → 1 mutation-less
+  diff; approve → `house.json` mutated, snapshot written,
+  Requirement records appended.
+
 ## Pending
 
-### Build step 5 — Extractor agent + approval API
-- [ ] Wire `extract_diffs` to call Claude Sonnet 4.6 with the existing
-      `EXTRACTOR_SYSTEM_PROMPT`; validate response against a
-      `RequirementDiff` Pydantic model; one retry on malformed JSON.
-- [ ] `POST /prompt` — runs extractor, returns diffs or clarification, no
-      mutation.
-- [ ] `POST /requirements/approve` — assign `req_XXXX`, validate proposed
-      mutation, append to log, mark superseded targets, mutate `house.json`
-      for `dimension`/`feature`/`adjacency`, snapshot.
-- [ ] `POST /requirements/reject` — log rejection with optional reason.
-- [ ] Trigger selective re-render of affected rooms after approval.
-- [ ] Right-pane Diffs panel in `web/app.js` with approve/reject and inline
-      conflict warnings.
-
-### Build step 6 — Validator + conflict detection in approve flow
-- [ ] Run `validate_house` against the projected post-mutation state and
-      block on hard issues with structured error payloads.
-- [ ] Conflict detection: same-scope+type collisions, contradictory
-      orientations/dimensions; surface `req_id`s in the diff response.
+### Build step 6 — Chat log + streaming + session resume (FR9, FR11, FR12)
+- [ ] Per-design session id persisted at `designs/<name>/.session_id`;
+      "New chat" rotates to a fresh uuid and keeps the old session in
+      the SDK's on-disk store. Resume on every follow-up call so
+      Claude remembers prior turns.
+- [ ] `extract_diffs_stream()` async generator yielding
+      `{type, text|extractor_result|message}` events. Non-streaming
+      `extract_diffs()` becomes a thin wrapper that consumes the
+      stream and returns the final result.
+- [ ] `POST /designs/{name}/prompt` switches to Server-Sent Events;
+      tool calls translated to friendly status lines
+      (`Reading the plan…`, `Sketching room placement…`,
+      `Checking that it fits…`, `Checking past decisions…`).
+- [ ] `POST /designs/{name}/sessions/clear` rotates the session id
+      (does not delete sessions).
+- [ ] Web UI: right pane becomes a chat log with input at the bottom;
+      remove the standalone Prompt and Pending diffs panels; diff
+      cards render inline within each turn, Approve/Reject buttons
+      attached to that turn's bubble; "New chat" button.
 
 ### Build step 7 — Selective regen + undo
 - [ ] Compute affected room set on approval (room + adjacency neighbours).
