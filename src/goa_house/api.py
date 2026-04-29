@@ -5,11 +5,17 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from goa_house.agents.extractor import ExtractorError, extract_diffs
+from goa_house.agents.extractor import extract_diffs_stream
+from goa_house.agents.sessions import (
+    clear_session,
+    get_session_id,
+    new_session_id,
+    save_session_id,
+)
 from goa_house.approval import ApprovalError, approve_diffs, reject_diffs
 from goa_house.diffs import DiffApplyError, RequirementDiff
 from goa_house.state import load_house, load_requirements
@@ -93,18 +99,51 @@ def create_app(
         return FileResponse(_design_file(designs_dir, name, "massing", filename))
 
     @app.post("/designs/{name}/prompt")
-    async def design_prompt(name: str, body: PromptRequest) -> JSONResponse:
+    async def design_prompt(name: str, body: PromptRequest) -> StreamingResponse:
         text = body.text.strip()
         if not text:
             raise HTTPException(status_code=400, detail="text required")
         design_dir = _design_dir(designs_dir, name)
         house = load_house(design_dir / "house.json")
         recent = load_requirements(design_dir / "requirements.jsonl")
-        try:
-            result = await extract_diffs(text, house, recent)
-        except ExtractorError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        return JSONResponse(result.model_dump(mode="json"))
+
+        # Resume an existing per-design session, or mint a fresh one. Either
+        # way, the saved id is what the next /prompt call will resume from.
+        existing = get_session_id(design_dir)
+        if existing:
+            session_id_arg: Optional[str] = None
+            resume_arg: Optional[str] = existing
+        else:
+            session_id_arg = new_session_id()
+            save_session_id(design_dir, session_id_arg)
+            resume_arg = None
+
+        async def event_stream():
+            yield _sse({"type": "session", "session_id": session_id_arg or existing})
+            try:
+                async for event in extract_diffs_stream(
+                    text,
+                    house,
+                    recent,
+                    session_id=session_id_arg,
+                    resume=resume_arg,
+                ):
+                    yield _sse(event)
+            except Exception as exc:  # noqa: BLE001
+                yield _sse({"type": "error", "message": str(exc)})
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    @app.post("/designs/{name}/sessions/clear")
+    def design_sessions_clear(name: str) -> JSONResponse:
+        design_dir = _design_dir(designs_dir, name)
+        cleared = clear_session(design_dir)
+        return JSONResponse({"status": "ok", "cleared_session_id": cleared})
+
+    @app.get("/designs/{name}/sessions")
+    def design_sessions_get(name: str) -> JSONResponse:
+        design_dir = _design_dir(designs_dir, name)
+        return JSONResponse({"session_id": get_session_id(design_dir)})
 
     @app.post("/designs/{name}/requirements/approve")
     def design_approve(name: str, body: ApproveRequest) -> JSONResponse:
@@ -130,6 +169,11 @@ def create_app(
         return JSONResponse({"status": "ok", **result})
 
     return app
+
+
+def _sse(event: dict) -> str:
+    """Format a dict as a Server-Sent Events `data:` frame."""
+    return f"data: {json.dumps(event)}\n\n"
 
 
 def _design_dir(designs_dir: Path, name: str) -> Path:

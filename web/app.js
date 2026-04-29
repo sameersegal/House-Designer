@@ -1,8 +1,6 @@
 (function () {
   let viewer = null;
   let currentDesign = null;
-  let pendingDiffs = [];        // last RequirementDiff[] from /prompt
-  let pendingPrompt = "";       // text submitted to /prompt
   let inFlight = false;
 
   document.addEventListener("DOMContentLoaded", main);
@@ -33,16 +31,14 @@
     document.getElementById("prompt-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitPrompt();
     });
+    document.getElementById("new-chat-btn").addEventListener("click", newChat);
 
     await loadDesign(initial);
   }
 
   async function loadDesign(name) {
     currentDesign = name;
-    pendingDiffs = [];
-    pendingPrompt = "";
-    renderDiffs(null);
-    setPromptStatus("");
+    document.getElementById("chat-log").innerHTML = "";
 
     const [tour, house, reqs] = await Promise.all([
       fetch(`/designs/${encodeURIComponent(name)}/tour.json`).then((r) => r.json()),
@@ -150,147 +146,170 @@
     setRequirementsLog(reqs.requirements || []);
   }
 
-  // ---- Prompt + diff approval flow --------------------------------------
+  // ---- Chat / SSE flow ---------------------------------------------------
 
   async function submitPrompt() {
-    if (inFlight) return;
+    if (inFlight || !currentDesign) return;
     const input = document.getElementById("prompt-input");
     const text = input.value.trim();
     if (!text) return;
-    if (!currentDesign) return;
 
     setInFlight(true);
-    setPromptStatus("Thinking…");
-    pendingPrompt = text;
+    input.value = "";
+    appendUserBubble(text);
+    const agent = appendAgentBubble();
 
     try {
-      const res = await fetch(`/designs/${encodeURIComponent(currentDesign)}/prompt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      const body = await res.json().catch(() => ({}));
+      const res = await fetch(
+        `/designs/${encodeURIComponent(currentDesign)}/prompt`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        },
+      );
       if (!res.ok) {
-        const detail = body && body.detail ? body.detail : `HTTP ${res.status}`;
-        setPromptStatus(`Error: ${detail}`, "error");
+        const detail = await res.text().catch(() => `HTTP ${res.status}`);
+        appendAgentError(agent, detail);
         return;
       }
-      if (body.kind === "clarification") {
-        pendingDiffs = [];
-        renderClarification(body.question);
-        setPromptStatus("Clarification requested.", "ok");
-      } else if (body.kind === "diffs") {
-        pendingDiffs = body.diffs || [];
-        renderDiffs(pendingDiffs);
-        setPromptStatus(
-          pendingDiffs.length
-            ? `${pendingDiffs.length} proposed diff${pendingDiffs.length === 1 ? "" : "s"}.`
-            : "No diffs proposed.",
-          "ok",
-        );
-      } else {
-        setPromptStatus("Unexpected response from extractor.", "error");
-      }
+      await readSSE(res, (event) => onEvent(agent, event, text));
     } catch (err) {
-      setPromptStatus(`Error: ${err.message || err}`, "error");
+      appendAgentError(agent, err.message || String(err));
     } finally {
       setInFlight(false);
     }
   }
 
-  function renderDiffs(diffs) {
-    const container = document.getElementById("diffs-container");
-    if (diffs === null) {
-      container.innerHTML = `<p style="color:var(--muted);font-size:12px;margin:4px 0">Send a prompt to see proposed diffs.</p>`;
+  function onEvent(agentEl, event, userPrompt) {
+    if (event.type === "session") {
+      // Ignore — the server already saved it.
       return;
     }
+    if (event.type === "status") {
+      const line = document.createElement("div");
+      line.className = "status";
+      line.textContent = event.label || event.tool || "Working…";
+      agentEl.appendChild(line);
+      scrollChat();
+      return;
+    }
+    if (event.type === "error") {
+      appendAgentError(agentEl, event.message || "Something went wrong.");
+      return;
+    }
+    if (event.type === "result") {
+      // Drop the status spinner lines once the result is in (keep the diffs only).
+      Array.from(agentEl.querySelectorAll(".status")).forEach((s) => s.remove());
+      const result = event.extractor_result || {};
+      if (result.kind === "clarification") {
+        const bubble = document.createElement("div");
+        bubble.className = "bubble clarify";
+        bubble.textContent = result.question || "Could you tell me more?";
+        agentEl.appendChild(bubble);
+      } else if (result.kind === "diffs") {
+        renderDiffs(agentEl, result.diffs || [], userPrompt);
+      } else {
+        appendAgentError(agentEl, "Unexpected response from Claude.");
+      }
+      scrollChat();
+    }
+  }
+
+  function renderDiffs(agentEl, diffs, userPrompt) {
     if (!diffs.length) {
-      container.innerHTML = `<p style="color:var(--muted);font-size:12px;margin:4px 0">No diffs.</p>`;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = "No changes proposed.";
+      agentEl.appendChild(bubble);
       return;
     }
 
-    container.innerHTML = "";
+    const wrapper = document.createElement("div");
+    wrapper.className = "bubble";
+    wrapper.style.padding = "6px 8px";
+
+    const intro = document.createElement("div");
+    intro.style.marginBottom = "4px";
+    intro.style.fontSize = "12px";
+    intro.style.color = "var(--muted)";
+    intro.textContent = `Proposed ${diffs.length} change${diffs.length === 1 ? "" : "s"}:`;
+    wrapper.appendChild(intro);
+
     diffs.forEach((diff, idx) => {
       const card = document.createElement("div");
       card.className = "diff-card";
-      const cb = `<input type="checkbox" data-idx="${idx}" checked />`;
       const conflicts = (diff.conflicts_with || []).length
-        ? `<div class="conflict">⚠ Conflicts with: ${diff.conflicts_with.join(", ")}${diff.suggested_resolution ? ` — ${escapeHtml(diff.suggested_resolution)}` : ""}</div>`
+        ? `<div class="conflict">⚠ Conflicts with: ${diff.conflicts_with.join(", ")}${
+            diff.suggested_resolution ? ` — ${escapeHtml(diff.suggested_resolution)}` : ""
+          }</div>`
         : "";
       const mut = mutationSummary(diff.mutation);
       card.innerHTML = `
         <div class="top">
-          ${cb}
+          <input type="checkbox" data-idx="${idx}" checked />
           <div class="body">
             <div><strong>${escapeHtml(diff.proposed.statement)}</strong></div>
-            <div class="meta">${escapeHtml(diff.proposed.type)} · scope: ${escapeHtml(diff.proposed.scope)} · affects: ${(diff.affected_rooms || []).map(escapeHtml).join(", ") || "—"}</div>
+            <div class="meta">${escapeHtml(diff.proposed.type)} · scope: ${escapeHtml(diff.proposed.scope)}${
+              (diff.affected_rooms || []).length
+                ? " · affects: " + diff.affected_rooms.map(escapeHtml).join(", ")
+                : ""
+            }</div>
             ${mut ? `<div class="mut">${escapeHtml(mut)}</div>` : ""}
             <div class="span">"${escapeHtml(diff.source_span)}"</div>
             ${conflicts}
           </div>
         </div>
       `;
-      container.appendChild(card);
+      wrapper.appendChild(card);
     });
 
     const reasonInput = document.createElement("input");
     reasonInput.type = "text";
-    reasonInput.id = "reject-reason";
     reasonInput.className = "reject-reason";
-    reasonInput.placeholder = "Reason for rejection (optional)";
-    container.appendChild(reasonInput);
+    reasonInput.placeholder = "Reason if rejecting (optional)";
+    wrapper.appendChild(reasonInput);
 
     const actions = document.createElement("div");
     actions.className = "diff-actions";
     actions.innerHTML = `
-      <button type="button" id="approve-btn" class="primary">Approve selected</button>
-      <button type="button" id="reject-btn">Reject selected</button>
+      <button type="button" class="primary approve-btn">Approve selected</button>
+      <button type="button" class="reject-btn">Reject selected</button>
     `;
-    container.appendChild(actions);
+    wrapper.appendChild(actions);
 
-    document.getElementById("approve-btn").addEventListener("click", () => submitDecision("approve"));
-    document.getElementById("reject-btn").addEventListener("click", () => submitDecision("reject"));
+    actions.querySelector(".approve-btn").addEventListener("click", () =>
+      submitDecision(wrapper, diffs, userPrompt, "approve", reasonInput),
+    );
+    actions.querySelector(".reject-btn").addEventListener("click", () =>
+      submitDecision(wrapper, diffs, userPrompt, "reject", reasonInput),
+    );
+
+    agentEl.appendChild(wrapper);
   }
 
-  function renderClarification(question) {
-    const container = document.getElementById("diffs-container");
-    container.innerHTML = `
-      <div class="diff-clarify">
-        <strong>Clarification:</strong> ${escapeHtml(question)}
-      </div>
-    `;
-  }
-
-  async function submitDecision(kind) {
+  async function submitDecision(wrapper, diffs, userPrompt, kind, reasonInput) {
     if (inFlight) return;
-    if (!pendingDiffs.length) return;
 
-    const checked = Array.from(
-      document.querySelectorAll('#diffs-container input[type="checkbox"]'),
-    )
+    const checked = Array.from(wrapper.querySelectorAll('input[type="checkbox"]'))
       .filter((cb) => cb.checked)
       .map((cb) => Number(cb.dataset.idx));
     if (!checked.length) {
-      toast("Select at least one diff first.", "error");
+      toast("Select at least one change first.", "error");
       return;
     }
-    const selected = checked.map((i) => pendingDiffs[i]);
-    const reasonEl = document.getElementById("reject-reason");
-    const reason = reasonEl && reasonEl.value.trim() ? reasonEl.value.trim() : null;
+    const selected = checked.map((i) => diffs[i]);
+    const reason = reasonInput && reasonInput.value.trim() ? reasonInput.value.trim() : null;
 
     const url =
       kind === "approve"
         ? `/designs/${encodeURIComponent(currentDesign)}/requirements/approve`
         : `/designs/${encodeURIComponent(currentDesign)}/requirements/reject`;
 
-    setInFlight(true);
-    setPromptStatus(kind === "approve" ? "Approving…" : "Rejecting…");
+    setDecisionPending(wrapper, true);
 
     try {
-      const payload = {
-        diffs: selected,
-        user_prompt: pendingPrompt,
-      };
+      const payload = { diffs: selected, user_prompt: userPrompt };
       if (kind === "reject") payload.reason = reason;
 
       const res = await fetch(url, {
@@ -302,48 +321,134 @@
 
       if (kind === "approve") {
         if (res.status === 409) {
-          renderBlockedIssues(body.issues || []);
-          setPromptStatus("Approval blocked by validation.", "error");
+          renderBlockedIssues(wrapper, body.issues || []);
+          setDecisionPending(wrapper, false);
           return;
         }
         if (!res.ok) {
-          setPromptStatus(`Error: ${body.detail || `HTTP ${res.status}`}`, "error");
+          toast(body.detail || `HTTP ${res.status}`, "error");
+          setDecisionPending(wrapper, false);
           return;
         }
+        replaceWithResolved(wrapper, "ok", `✓ Approved (${(body.applied || []).join(", ")})`);
         toast(`Approved ${(body.applied || []).join(", ")}`, "ok");
-        pendingDiffs = [];
-        renderDiffs([]);
-        document.getElementById("prompt-input").value = "";
-        await loadDesign(currentDesign);
-        setPromptStatus("Applied.", "ok");
+        await loadDesign(currentDesign);  // refresh viewer + topdown + reqs log
       } else {
         if (!res.ok) {
-          setPromptStatus(`Error: ${body.detail || `HTTP ${res.status}`}`, "error");
+          toast(body.detail || `HTTP ${res.status}`, "error");
+          setDecisionPending(wrapper, false);
           return;
         }
+        replaceWithResolved(wrapper, "rej", `✗ Rejected (${(body.rejected || []).join(", ")})`);
         toast(`Rejected ${(body.rejected || []).join(", ")}`, "ok");
-        pendingDiffs = [];
-        renderDiffs([]);
         await refreshRequirementsLog();
-        setPromptStatus("Rejected.", "ok");
       }
     } catch (err) {
-      setPromptStatus(`Error: ${err.message || err}`, "error");
-    } finally {
-      setInFlight(false);
+      toast(err.message || String(err), "error");
+      setDecisionPending(wrapper, false);
     }
   }
 
-  function renderBlockedIssues(issues) {
-    const container = document.getElementById("diffs-container");
+  function setDecisionPending(wrapper, pending) {
+    wrapper.querySelectorAll("button").forEach((b) => (b.disabled = pending));
+  }
+
+  function replaceWithResolved(wrapper, kind, label) {
+    const note = document.createElement("div");
+    note.className = "resolved " + kind;
+    note.textContent = label;
+    wrapper.replaceWith(note);
+  }
+
+  function renderBlockedIssues(wrapper, issues) {
+    const existing = wrapper.querySelector(".blocked-banner");
+    if (existing) existing.remove();
     const banner = document.createElement("div");
-    banner.className = "diff-clarify";
-    banner.style.borderColor = "#e88a8a";
+    banner.className = "blocked-banner";
+    banner.style.cssText =
+      "margin-top:6px;padding:6px 8px;border:1px solid #e88a8a;border-radius:4px;color:#f1c4c4;background:#3a2828;font-size:12px";
     banner.innerHTML =
-      `<strong>Blocked:</strong> projection failed validation:<ul style="margin:4px 0 0 18px;padding:0">` +
+      "<strong>Can't apply yet:</strong><ul style=\"margin:4px 0 0 18px;padding:0\">" +
       issues.map((i) => `<li>[${escapeHtml(i.code)}] ${escapeHtml(i.message)}</li>`).join("") +
-      `</ul>`;
-    container.insertBefore(banner, container.firstChild);
+      "</ul>";
+    wrapper.insertBefore(banner, wrapper.querySelector(".diff-actions"));
+  }
+
+  async function newChat() {
+    if (inFlight || !currentDesign) return;
+    if (!confirm("Start a fresh conversation? Pending decisions in this chat will be hidden.")) return;
+    try {
+      await fetch(`/designs/${encodeURIComponent(currentDesign)}/sessions/clear`, {
+        method: "POST",
+      });
+    } catch (err) {
+      toast(err.message || String(err), "error");
+      return;
+    }
+    document.getElementById("chat-log").innerHTML = "";
+    toast("Started a new chat.", "ok");
+  }
+
+  // ---- SSE parsing -------------------------------------------------------
+
+  async function readSSE(response, onEvent) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) !== -1) {
+        const frame = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 2);
+        if (!frame.startsWith("data:")) continue;
+        const payload = frame.slice("data:".length).trim();
+        if (!payload) continue;
+        try {
+          onEvent(JSON.parse(payload));
+        } catch {
+          // skip malformed frames
+        }
+      }
+    }
+  }
+
+  // ---- Chat-bubble helpers -----------------------------------------------
+
+  function appendUserBubble(text) {
+    const log = document.getElementById("chat-log");
+    const msg = document.createElement("div");
+    msg.className = "msg user";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
+    msg.appendChild(bubble);
+    log.appendChild(msg);
+    scrollChat();
+  }
+
+  function appendAgentBubble() {
+    const log = document.getElementById("chat-log");
+    const msg = document.createElement("div");
+    msg.className = "msg agent";
+    log.appendChild(msg);
+    scrollChat();
+    return msg;
+  }
+
+  function appendAgentError(agentEl, message) {
+    const bubble = document.createElement("div");
+    bubble.className = "bubble error";
+    bubble.textContent = `Error: ${message}`;
+    agentEl.appendChild(bubble);
+    scrollChat();
+  }
+
+  function scrollChat() {
+    const log = document.getElementById("chat-log");
+    log.scrollTop = log.scrollHeight;
   }
 
   async function refreshRequirementsLog() {
@@ -387,16 +492,9 @@
     return JSON.stringify(m);
   }
 
-  function setPromptStatus(text, kind) {
-    const el = document.getElementById("prompt-status");
-    el.className = "status" + (kind ? " " + kind : "");
-    el.textContent = text;
-  }
-
   function setInFlight(flag) {
     inFlight = flag;
     document.getElementById("prompt-send").disabled = flag;
-    document.querySelectorAll("#diffs-container button").forEach((b) => (b.disabled = flag));
   }
 
   let toastTimer = null;
@@ -418,7 +516,7 @@
     })[c]);
   }
 
-  // ---- Existing helpers --------------------------------------------------
+  // ---- Side-panel helpers ------------------------------------------------
 
   function setRoomInfo(room) {
     const el = document.getElementById("room-info");
