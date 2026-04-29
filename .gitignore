@@ -28,3 +28,6 @@ state/logs/
 state/house.json
 state/house.v*.json
 state/requirements.jsonl
+
+# Per-design Claude Agent SDK session handle (see src/goa_house/agents/sessions.py)
+designs/*/.session_id

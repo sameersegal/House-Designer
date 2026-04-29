@@ -150,27 +150,49 @@ Update on every merged change.
   diff; approve → `house.json` mutated, snapshot written,
   Requirement records appended.
 
-## Pending
-
 ### Build step 6 — Chat log + streaming + session resume (FR9, FR11, FR12)
-- [ ] Per-design session id persisted at `designs/<name>/.session_id`;
-      "New chat" rotates to a fresh uuid and keeps the old session in
-      the SDK's on-disk store. Resume on every follow-up call so
-      Claude remembers prior turns.
-- [ ] `extract_diffs_stream()` async generator yielding
-      `{type, text|extractor_result|message}` events. Non-streaming
-      `extract_diffs()` becomes a thin wrapper that consumes the
-      stream and returns the final result.
-- [ ] `POST /designs/{name}/prompt` switches to Server-Sent Events;
-      tool calls translated to friendly status lines
-      (`Reading the plan…`, `Sketching room placement…`,
-      `Checking that it fits…`, `Checking past decisions…`).
-- [ ] `POST /designs/{name}/sessions/clear` rotates the session id
-      (does not delete sessions).
-- [ ] Web UI: right pane becomes a chat log with input at the bottom;
-      remove the standalone Prompt and Pending diffs panels; diff
-      cards render inline within each turn, Approve/Reject buttons
-      attached to that turn's bubble; "New chat" button.
+- `src/goa_house/agents/sessions.py` — per-design session id stored at
+  `designs/<name>/.session_id` (gitignored). `clear_session()` deletes
+  the handle so the next prompt mints a fresh uuid; the prior SDK
+  transcript stays in the on-disk store for audit/debug.
+- `extract_diffs_stream()` is the new primary entry point — async
+  generator yielding `{"type":"status", ...}` per tool call,
+  `{"type":"result", "extractor_result":{...}}` for the final answer,
+  and `{"type":"error", "message":"..."}` on failure. Non-streaming
+  `extract_diffs()` is now a thin wrapper that consumes the stream.
+- Friendly tool labels: `get_house` → "Reading the plan…",
+  `list_recent_requirements` → "Checking past decisions…",
+  `room_geometry_hint` → "Sketching room placement…",
+  `validate_projection` → "Checking that it fits…".
+- `ClaudeAgentOptions` now uses `tools=[]` + `setting_sources=[]` to
+  lock the spawned agent to ONLY our MCP tools and skip ambient
+  CLAUDE.md / project settings inheritance — without these the agent
+  drifted into Bash/git side-quests when run from inside another
+  Claude Code session. Plus `session_id` / `resume` plumbed through
+  for FR11 continuity.
+- API:
+  - `POST /designs/{name}/prompt` → Server-Sent Events stream. Reads
+    the saved session id and resumes; if absent, mints + saves one.
+    First frame is `{"type":"session", "session_id": ...}`.
+  - `POST /designs/{name}/sessions/clear` — drops the handle, returns
+    the cleared id.
+  - `GET /designs/{name}/sessions` — current session id (mostly debug).
+- Web UI: right pane is now a chat panel with header (💬 Chat with
+  Claude + "New chat" button), scrollable message log, and a composer
+  textarea + Send button at the bottom. User bubbles right-aligned,
+  agent status lines appear as italic ⋯-prefixed chips while the
+  agent works, then collapse once the result arrives. Diff cards
+  render inline in the agent's bubble with checkboxes, Approve /
+  Reject, and an optional rejection reason. Once acted on, the cards
+  collapse to "✓ Approved (req_XXXX)" / "✗ Rejected (req_XXXX)".
+  Standalone Prompt and Pending-diffs panels removed; Current room +
+  Style panels moved to the bottom of the left pane.
+- Live integration verified end-to-end: 5 status events fire in the
+  expected order ("Reading the plan…" → "Checking past decisions…" →
+  "Sketching room placement…" ×2 → "Checking that it fits…") followed
+  by a result event with the proposed diffs.
+
+## Pending
 
 ### Build step 7 — Selective regen + undo
 - [ ] Compute affected room set on approval (room + adjacency neighbours).

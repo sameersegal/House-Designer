@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -10,7 +11,6 @@ from goa_house.api import create_app
 from goa_house.diffs import (
     AddOpeningMutation,
     AddRoomMutation,
-    ExtractorResult,
     ProposedRequirement,
     RequirementDiff,
 )
@@ -19,6 +19,16 @@ from goa_house.state import (
     Opening,
     Room,
 )
+
+
+def _read_sse(text: str) -> list[dict]:
+    """Parse an SSE response body into event dicts."""
+    events = []
+    for frame in text.split("\n\n"):
+        frame = frame.strip()
+        if frame.startswith("data:"):
+            events.append(json.loads(frame[len("data:"):].strip()))
+    return events
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_HOUSE = REPO_ROOT / "designs" / "goa-sample" / "house.json"
@@ -95,21 +105,25 @@ def test_index_served(client: TestClient):
     assert r.status_code == 200
     assert "Goa House Designer" in r.text
     assert "design-select" in r.text
-    # Phase 4: prompt + diffs UI
+    # Chat UI scaffolding
+    assert "chat-log" in r.text
     assert "prompt-input" in r.text
     assert "prompt-send" in r.text
-    assert "diffs-container" in r.text
+    assert "new-chat-btn" in r.text
     assert "reqs-log" in r.text
 
 
-def test_static_app_js_includes_diff_flow(client: TestClient):
+def test_static_app_js_includes_chat_flow(client: TestClient):
     r = client.get("/static/app.js")
     assert r.status_code == 200
     assert "submitPrompt" in r.text
     assert "submitDecision" in r.text
     assert "renderDiffs" in r.text
+    assert "readSSE" in r.text
+    assert "newChat" in r.text
     assert "/requirements/approve" in r.text
     assert "/requirements/reject" in r.text
+    assert "/sessions/clear" in r.text
 
 
 def test_empty_designs_dir(tmp_path: Path):
@@ -185,33 +199,67 @@ def _add_bedroom_diffs() -> list[RequirementDiff]:
     ]
 
 
-def test_prompt_returns_mocked_diffs(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def _diffs_event(diffs: list[RequirementDiff]) -> dict:
+    return {
+        "type": "result",
+        "extractor_result": {
+            "kind": "diffs",
+            "diffs": [d.model_dump(mode="json") for d in diffs],
+            "question": None,
+        },
+    }
+
+
+def _patch_stream(monkeypatch: pytest.MonkeyPatch, events: list[dict]):
+    async def fake_stream(text, house, recent, **kwargs):
+        for e in events:
+            yield e
+
+    monkeypatch.setattr("goa_house.api.extract_diffs_stream", fake_stream)
+
+
+def test_prompt_streams_diffs_via_sse(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     diffs = _add_bedroom_diffs()
-
-    async def fake_extract(text, house, recent, **kwargs):
-        return ExtractorResult(kind="diffs", diffs=diffs)
-
-    monkeypatch.setattr("goa_house.api.extract_diffs", fake_extract)
+    _patch_stream(
+        monkeypatch,
+        [
+            {"type": "status", "tool": "mcp__goa__get_house", "label": "Reading the plan…"},
+            _diffs_event(diffs),
+        ],
+    )
     r = client.post(
         "/designs/goa-sample/prompt",
         json={"text": "Add a 4x5m bedroom NE."},
     )
     assert r.status_code == 200
-    body = r.json()
-    assert body["kind"] == "diffs"
-    assert len(body["diffs"]) == 2
+    assert r.headers["content-type"].startswith("text/event-stream")
+    events = _read_sse(r.text)
+    types = [e["type"] for e in events]
+    assert types[0] == "session"  # initial session frame
+    assert "status" in types
+    assert types[-1] == "result"
+    assert events[-1]["extractor_result"]["kind"] == "diffs"
+    assert len(events[-1]["extractor_result"]["diffs"]) == 2
 
 
-def test_prompt_returns_clarification(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    async def fake_extract(text, house, recent, **kwargs):
-        return ExtractorResult(kind="clarification", question="How big?")
-
-    monkeypatch.setattr("goa_house.api.extract_diffs", fake_extract)
+def test_prompt_streams_clarification(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    _patch_stream(
+        monkeypatch,
+        [
+            {
+                "type": "result",
+                "extractor_result": {
+                    "kind": "clarification",
+                    "diffs": [],
+                    "question": "How big?",
+                },
+            }
+        ],
+    )
     r = client.post("/designs/goa-sample/prompt", json={"text": "big bedroom"})
     assert r.status_code == 200
-    body = r.json()
-    assert body["kind"] == "clarification"
-    assert body["question"] == "How big?"
+    events = _read_sse(r.text)
+    assert events[-1]["extractor_result"]["question"] == "How big?"
 
 
 def test_prompt_empty_text_400(client: TestClient):
@@ -224,15 +272,80 @@ def test_prompt_unknown_design_404(client: TestClient):
     assert r.status_code == 404
 
 
-def test_prompt_extractor_error_502(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    from goa_house.agents.extractor import ExtractorError
-
-    async def fake_extract(*args, **kwargs):
-        raise ExtractorError("model returned garbage")
-
-    monkeypatch.setattr("goa_house.api.extract_diffs", fake_extract)
+def test_prompt_streams_error_event(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    _patch_stream(
+        monkeypatch,
+        [{"type": "error", "message": "model returned garbage"}],
+    )
     r = client.post("/designs/goa-sample/prompt", json={"text": "hello"})
-    assert r.status_code == 502
+    # Stream already started → 200, error arrives as an event.
+    assert r.status_code == 200
+    events = _read_sse(r.text)
+    err = next(e for e in events if e["type"] == "error")
+    assert "garbage" in err["message"]
+
+
+def test_prompt_persists_session_id_for_resume(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    captured: dict = {}
+
+    async def fake_stream(text, house, recent, *, session_id=None, resume=None, **kwargs):
+        captured.setdefault("calls", []).append(
+            {"session_id": session_id, "resume": resume}
+        )
+        yield _diffs_event([])
+
+    monkeypatch.setattr("goa_house.api.extract_diffs_stream", fake_stream)
+
+    # First call — no existing session, server mints one and saves it.
+    r1 = client.post("/designs/goa-sample/prompt", json={"text": "hi"})
+    assert r1.status_code == 200
+    first = captured["calls"][0]
+    assert first["session_id"] is not None
+    assert first["resume"] is None
+
+    # Confirm .session_id was persisted (verify via the GET endpoint).
+    sid_resp = client.get("/designs/goa-sample/sessions").json()
+    assert sid_resp["session_id"] == first["session_id"]
+
+    # Second call — should resume the saved session.
+    r2 = client.post("/designs/goa-sample/prompt", json={"text": "hi again"})
+    assert r2.status_code == 200
+    second = captured["calls"][1]
+    assert second["session_id"] is None
+    assert second["resume"] == first["session_id"]
+
+
+def test_sessions_clear_rotates(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    async def fake_stream(text, house, recent, **kwargs):
+        yield _diffs_event([])
+
+    monkeypatch.setattr("goa_house.api.extract_diffs_stream", fake_stream)
+
+    client.post("/designs/goa-sample/prompt", json={"text": "hi"})
+    sid_before = client.get("/designs/goa-sample/sessions").json()["session_id"]
+    assert sid_before is not None
+
+    cleared = client.post("/designs/goa-sample/sessions/clear").json()
+    assert cleared["status"] == "ok"
+    assert cleared["cleared_session_id"] == sid_before
+
+    after = client.get("/designs/goa-sample/sessions").json()["session_id"]
+    assert after is None
+
+    # Next prompt mints a fresh session id, distinct from the old one.
+    client.post("/designs/goa-sample/prompt", json={"text": "again"})
+    sid_after = client.get("/designs/goa-sample/sessions").json()["session_id"]
+    assert sid_after is not None
+    assert sid_after != sid_before
+
+
+def test_sessions_endpoint_unknown_design_404(client: TestClient):
+    r = client.get("/designs/no-such/sessions")
+    assert r.status_code == 404
+    r = client.post("/designs/no-such/sessions/clear")
+    assert r.status_code == 404
 
 
 def test_approve_applies_diffs(client: TestClient, tmp_path: Path):

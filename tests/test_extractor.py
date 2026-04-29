@@ -3,11 +3,16 @@ from __future__ import annotations
 import json
 
 import pytest
+from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
 from goa_house.agents.extractor import (
     EXTRACTOR_SYSTEM_PROMPT,
+    ExtractorError,
     _make_tools,
     compute_geometry_hint,
+    extract_diffs,
+    extract_diffs_stream,
+    friendly_tool_label,
     parse_final_output,
 )
 from goa_house.diffs import ExtractorResult
@@ -212,3 +217,143 @@ def test_extractor_result_round_trip_via_pydantic():
     payload = json.loads(_diffs_payload())
     result = ExtractorResult.model_validate(payload)
     assert result.diffs[0].proposed.statement == "Use Mangalore tile roof."
+
+
+# ---- Streaming + tool-label mapping -------------------------------------
+
+
+def test_friendly_label_maps_known_names():
+    assert friendly_tool_label("mcp__goa__get_house") == "Reading the plan…"
+    assert friendly_tool_label("mcp__goa__validate_projection") == "Checking that it fits…"
+    assert friendly_tool_label("get_house") == "Reading the plan…"
+
+
+def test_friendly_label_falls_back_for_unknown():
+    assert friendly_tool_label("mystery_tool") == "Working (mystery_tool)…"
+
+
+def _assistant_msg(*blocks) -> AssistantMessage:
+    return AssistantMessage(content=list(blocks), model="claude-sonnet-4-6")
+
+
+def _final_text() -> str:
+    payload = json.dumps(
+        {
+            "kind": "diffs",
+            "diffs": [
+                {
+                    "proposed": {
+                        "scope": "global",
+                        "type": "material",
+                        "statement": "Use Mangalore tile roof.",
+                    },
+                    "affected_rooms": [],
+                    "conflicts_with": [],
+                    "suggested_resolution": None,
+                    "source_span": "Mangalore tile roof",
+                    "mutation": None,
+                }
+            ],
+        }
+    )
+    return f"<output>{payload}</output>"
+
+
+def _patch_query(monkeypatch: pytest.MonkeyPatch, messages: list):
+    """Replace claude_agent_sdk.query with a stub that yields `messages`."""
+
+    async def fake_query(*, prompt, options=None, transport=None):
+        for m in messages:
+            yield m
+
+    monkeypatch.setattr("goa_house.agents.extractor.query", fake_query)
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_status_for_each_tool_use(monkeypatch: pytest.MonkeyPatch):
+    msgs = [
+        _assistant_msg(ToolUseBlock(id="t1", name="mcp__goa__get_house", input={})),
+        _assistant_msg(
+            ToolUseBlock(id="t2", name="mcp__goa__validate_projection", input={"diffs_json": "[]"})
+        ),
+        _assistant_msg(TextBlock(_final_text())),
+    ]
+    _patch_query(monkeypatch, msgs)
+
+    events: list[dict] = []
+    async for ev in extract_diffs_stream("hi", _house(), []):
+        events.append(ev)
+
+    statuses = [e for e in events if e["type"] == "status"]
+    assert [s["label"] for s in statuses] == [
+        "Reading the plan…",
+        "Checking that it fits…",
+    ]
+    assert events[-1]["type"] == "result"
+    assert events[-1]["extractor_result"]["kind"] == "diffs"
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_error_on_unparseable_output(monkeypatch: pytest.MonkeyPatch):
+    msgs = [_assistant_msg(TextBlock("not structured at all"))]
+    _patch_query(monkeypatch, msgs)
+
+    events = [e async for e in extract_diffs_stream("hi", _house(), [])]
+    assert events[-1]["type"] == "error"
+    assert "did not produce" in events[-1]["message"]
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_error_when_query_raises(monkeypatch: pytest.MonkeyPatch):
+    async def boom(*, prompt, options=None, transport=None):
+        raise RuntimeError("boom")
+        yield  # pragma: no cover  — make this a generator
+
+    monkeypatch.setattr("goa_house.agents.extractor.query", boom)
+    events = [e async for e in extract_diffs_stream("hi", _house(), [])]
+    assert events[-1]["type"] == "error"
+    assert "boom" in events[-1]["message"]
+
+
+@pytest.mark.asyncio
+async def test_extract_diffs_returns_final_result(monkeypatch: pytest.MonkeyPatch):
+    msgs = [_assistant_msg(TextBlock(_final_text()))]
+    _patch_query(monkeypatch, msgs)
+
+    result = await extract_diffs("hi", _house(), [])
+    assert result.kind == "diffs"
+    assert len(result.diffs) == 1
+
+
+@pytest.mark.asyncio
+async def test_extract_diffs_raises_on_error(monkeypatch: pytest.MonkeyPatch):
+    msgs = [_assistant_msg(TextBlock("nonsense"))]
+    _patch_query(monkeypatch, msgs)
+
+    with pytest.raises(ExtractorError):
+        await extract_diffs("hi", _house(), [])
+
+
+@pytest.mark.asyncio
+async def test_stream_propagates_session_kwargs(monkeypatch: pytest.MonkeyPatch):
+    captured: dict = {}
+
+    async def fake_query(*, prompt, options=None, transport=None):
+        captured["session_id"] = options.session_id
+        captured["resume"] = options.resume
+        yield _assistant_msg(TextBlock(_final_text()))
+
+    monkeypatch.setattr("goa_house.agents.extractor.query", fake_query)
+
+    async for _ in extract_diffs_stream(
+        "hi", _house(), [], session_id="abc", resume=None
+    ):
+        pass
+    assert captured == {"session_id": "abc", "resume": None}
+
+    captured.clear()
+    async for _ in extract_diffs_stream(
+        "hi", _house(), [], session_id=None, resume="prev"
+    ):
+        pass
+    assert captured == {"session_id": None, "resume": "prev"}

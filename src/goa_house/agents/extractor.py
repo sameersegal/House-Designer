@@ -4,10 +4,13 @@ import json
 import re
 from typing import Any, Optional
 
+from collections.abc import AsyncIterator
+
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     TextBlock,
+    ToolUseBlock,
     create_sdk_mcp_server,
     query,
     tool,
@@ -270,20 +273,42 @@ def parse_final_output(text: str) -> Optional[ExtractorResult]:
         return None
 
 
-async def extract_diffs(
+TOOL_LABELS: dict[str, str] = {
+    "get_house": "Reading the plan…",
+    "list_recent_requirements": "Checking past decisions…",
+    "room_geometry_hint": "Sketching room placement…",
+    "validate_projection": "Checking that it fits…",
+}
+
+
+def friendly_tool_label(tool_name: str) -> str:
+    """Map an MCP tool name to a user-facing status line; fall back to the bare name."""
+    bare = tool_name.split("__")[-1] if "__" in tool_name else tool_name
+    return TOOL_LABELS.get(bare, f"Working ({bare})…")
+
+
+async def extract_diffs_stream(
     user_prompt: str,
     house: House,
     recent_requirements: list[Requirement],
     *,
-    model: Optional[str] = "claude-sonnet-4-6",
+    session_id: Optional[str] = None,
+    resume: Optional[str] = None,
+    model: Optional[str] = None,
     max_turns: int = 12,
     max_budget_usd: Optional[float] = None,
-) -> ExtractorResult:
-    """Run the Claude Agent SDK extractor and return a parsed ExtractorResult.
+) -> AsyncIterator[dict[str, Any]]:
+    """Run the agent and yield chronological events for streaming consumers.
 
-    Requires ANTHROPIC_API_KEY in the environment (consumed by the underlying
-    Claude Code CLI). Tools are exposed via an in-process MCP server bound to
-    the supplied house + recent_requirements snapshot.
+    Event shapes:
+        {"type": "status", "tool": "<mcp__goa__...>", "label": "Reading the plan…"}
+        {"type": "result", "extractor_result": {...}}
+        {"type": "error", "message": "..."}
+
+    Pass `session_id` to pin the SDK session id for a fresh run, or `resume`
+    to continue an existing session (carries the model's prior conversation).
+    Mutually exclusive in normal use; passing both is allowed but `resume`
+    takes precedence in the SDK.
     """
     tools = _make_tools(house, recent_requirements)
     server = create_sdk_mcp_server(name="goa", tools=tools)
@@ -291,6 +316,12 @@ async def extract_diffs(
     options = ClaudeAgentOptions(
         system_prompt=EXTRACTOR_SYSTEM_PROMPT,
         mcp_servers={"goa": server},
+        # Lock the agent to ONLY our MCP tools; without these locks the spawned
+        # `claude` CLI inherits built-ins (Bash, Edit, Read, etc.) plus the
+        # ambient project's CLAUDE.md / hooks, which causes it to drift off
+        # task (e.g. trying to git-commit on its own).
+        tools=[],
+        setting_sources=[],
         allowed_tools=[
             "mcp__goa__get_house",
             "mcp__goa__list_recent_requirements",
@@ -301,20 +332,76 @@ async def extract_diffs(
         max_turns=max_turns,
         max_budget_usd=max_budget_usd,
         permission_mode="dontAsk",
+        session_id=session_id,
+        resume=resume,
     )
 
     last_assistant_text = ""
-    async for msg in query(prompt=user_prompt, options=options):
-        if isinstance(msg, AssistantMessage):
+    try:
+        async for msg in query(prompt=user_prompt, options=options):
+            if not isinstance(msg, AssistantMessage):
+                continue
+            for block in msg.content:
+                if isinstance(block, ToolUseBlock):
+                    yield {
+                        "type": "status",
+                        "tool": block.name,
+                        "label": friendly_tool_label(block.name),
+                    }
             chunks = [b.text for b in msg.content if isinstance(b, TextBlock)]
             text = "".join(chunks).strip()
             if text:
                 last_assistant_text = text
+    except Exception as exc:
+        yield {"type": "error", "message": f"agent run failed: {exc}"}
+        return
 
     parsed = parse_final_output(last_assistant_text)
     if parsed is None:
-        raise ExtractorError(
-            "extractor did not produce a parseable ExtractorResult; "
-            f"last assistant message was: {last_assistant_text[:500]!r}"
-        )
-    return parsed
+        yield {
+            "type": "error",
+            "message": (
+                "extractor did not produce a parseable ExtractorResult; "
+                f"last assistant message was: {last_assistant_text[:300]!r}"
+            ),
+        }
+        return
+    yield {"type": "result", "extractor_result": parsed.model_dump(mode="json")}
+
+
+async def extract_diffs(
+    user_prompt: str,
+    house: House,
+    recent_requirements: list[Requirement],
+    *,
+    session_id: Optional[str] = None,
+    resume: Optional[str] = None,
+    model: Optional[str] = None,
+    max_turns: int = 12,
+    max_budget_usd: Optional[float] = None,
+) -> ExtractorResult:
+    """Non-streaming wrapper around `extract_diffs_stream` — consumes the
+    stream and returns the final ExtractorResult, raising ExtractorError
+    on failure."""
+    final: Optional[ExtractorResult] = None
+    err: Optional[str] = None
+    async for event in extract_diffs_stream(
+        user_prompt,
+        house,
+        recent_requirements,
+        session_id=session_id,
+        resume=resume,
+        model=model,
+        max_turns=max_turns,
+        max_budget_usd=max_budget_usd,
+    ):
+        if event["type"] == "result":
+            final = ExtractorResult.model_validate(event["extractor_result"])
+        elif event["type"] == "error":
+            err = event["message"]
+
+    if err is not None:
+        raise ExtractorError(err)
+    if final is None:
+        raise ExtractorError("extractor stream ended without a result")
+    return final
