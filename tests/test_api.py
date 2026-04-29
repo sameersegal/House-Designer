@@ -95,6 +95,21 @@ def test_index_served(client: TestClient):
     assert r.status_code == 200
     assert "Goa House Designer" in r.text
     assert "design-select" in r.text
+    # Phase 4: prompt + diffs UI
+    assert "prompt-input" in r.text
+    assert "prompt-send" in r.text
+    assert "diffs-container" in r.text
+    assert "reqs-log" in r.text
+
+
+def test_static_app_js_includes_diff_flow(client: TestClient):
+    r = client.get("/static/app.js")
+    assert r.status_code == 200
+    assert "submitPrompt" in r.text
+    assert "submitDecision" in r.text
+    assert "renderDiffs" in r.text
+    assert "/requirements/approve" in r.text
+    assert "/requirements/reject" in r.text
 
 
 def test_empty_designs_dir(tmp_path: Path):

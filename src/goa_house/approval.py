@@ -68,6 +68,9 @@ def approve_diffs(
 
     house = load_house(house_path)
 
+    if not diffs:
+        return {"applied": [], "superseded": [], "affected_rooms": [], "snapshot": None}
+
     projected = apply_diffs(house, diffs)
     issues = validate_house(projected)
     hard = [i for i in issues if i.severity == "hard"]

@@ -215,6 +215,14 @@ def test_reject_accepts_none_reason(design_dir: Path):
     assert reqs[0].rejection_reason is None
 
 
+def test_approve_empty_diffs_is_noop(design_dir: Path):
+    snaps_before = set(design_dir.glob("house.v*.json"))
+    result = approve_diffs([], "anything", design_dir)
+    assert result == {"applied": [], "superseded": [], "affected_rooms": [], "snapshot": None}
+    assert not (design_dir / "requirements.jsonl").exists()
+    assert set(design_dir.glob("house.v*.json")) == snaps_before
+
+
 def test_approve_requirement_only_diff_skips_rerender(tmp_path: Path):
     d = tmp_path / "designs" / "test"
     d.mkdir(parents=True)
