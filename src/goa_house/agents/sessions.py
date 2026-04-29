@@ -47,4 +47,4 @@ def clear_session(design_dir: Path) -> Optional[str]:
 
 def new_session_id() -> str:
     """Mint a fresh uuid4 hex string suitable for a Claude Agent SDK session id."""
-    return uuid.uuid4().hex
+    return str(uuid.uuid4())

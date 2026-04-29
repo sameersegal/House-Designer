@@ -85,6 +85,24 @@
   .msg.agent .resolved.ok { color: #8ad19a; }
   .msg.agent .resolved.rej { color: #e88a8a; }
 
+  /* Loading indicator */
+  .loading-indicator {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px; font-size: 12px; color: var(--muted);
+  }
+  .loading-dots { display: flex; gap: 4px; }
+  .loading-dots span {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
+    animation: dot-bounce 1.4s infinite ease-in-out both;
+  }
+  .loading-dots span:nth-child(1) { animation-delay: 0s; }
+  .loading-dots span:nth-child(2) { animation-delay: 0.16s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.32s; }
+  @keyframes dot-bounce {
+    0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+
   /* Diff cards inside an agent bubble */
   .diff-card {
     background: #1a1c22; border: 1px solid var(--border); border-radius: 6px;
@@ -124,6 +142,25 @@
   }
   .composer button:disabled { opacity: 0.5; cursor: progress; }
   .composer .hint { color: var(--muted); font-size: 11px; }
+
+  /* Panorama refresh overlay */
+  .pano-overlay {
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(13, 14, 17, 0.75);
+    opacity: 0; pointer-events: none;
+    transition: opacity 300ms ease;
+  }
+  .pano-overlay.visible { opacity: 1; pointer-events: auto; }
+  .pano-overlay .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .pano-overlay .label {
+    margin-top: 10px; font-size: 13px; color: var(--muted);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .toast {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -216,6 +253,10 @@
   </aside>
   <main>
     <div id="panorama"></div>
+    <div id="pano-overlay" class="pano-overlay">
+      <div class="spinner"></div>
+      <div class="label">Updating design…</div>
+    </div>
   </main>
   <aside class="right">
     <div class="chat-header">
