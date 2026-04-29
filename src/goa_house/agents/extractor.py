@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import sys
+import threading
 from typing import Any, Optional
 
 from collections.abc import AsyncIterator
@@ -287,6 +290,19 @@ def friendly_tool_label(tool_name: str) -> str:
     return TOOL_LABELS.get(bare, f"Working ({bare})…")
 
 
+def _needs_proactor_workaround() -> bool:
+    """On Windows, uvicorn --reload spawns a child whose event loop lacks
+    subprocess support.  We detect this and run the SDK on a dedicated
+    ProactorEventLoop thread instead."""
+    if sys.platform != "win32":
+        return False
+    try:
+        loop = asyncio.get_running_loop()
+        return not isinstance(loop, asyncio.ProactorEventLoop)
+    except RuntimeError:
+        return False
+
+
 async def extract_diffs_stream(
     user_prompt: str,
     house: House,
@@ -310,6 +326,35 @@ async def extract_diffs_stream(
     Mutually exclusive in normal use; passing both is allowed but `resume`
     takes precedence in the SDK.
     """
+    if _needs_proactor_workaround():
+        async for event in _extract_via_thread(
+            user_prompt, house, recent_requirements,
+            session_id=session_id, resume=resume, model=model,
+            max_turns=max_turns, max_budget_usd=max_budget_usd,
+        ):
+            yield event
+        return
+
+    async for event in _extract_diffs_core(
+        user_prompt, house, recent_requirements,
+        session_id=session_id, resume=resume, model=model,
+        max_turns=max_turns, max_budget_usd=max_budget_usd,
+    ):
+        yield event
+
+
+async def _extract_diffs_core(
+    user_prompt: str,
+    house: House,
+    recent_requirements: list[Requirement],
+    *,
+    session_id: Optional[str] = None,
+    resume: Optional[str] = None,
+    model: Optional[str] = None,
+    max_turns: int = 12,
+    max_budget_usd: Optional[float] = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Core implementation that requires a subprocess-capable event loop."""
     tools = _make_tools(house, recent_requirements)
     server = create_sdk_mcp_server(name="goa", tools=tools)
 
@@ -367,6 +412,64 @@ async def extract_diffs_stream(
         }
         return
     yield {"type": "result", "extractor_result": parsed.model_dump(mode="json")}
+
+
+async def _extract_via_thread(
+    user_prompt: str,
+    house: House,
+    recent_requirements: list[Requirement],
+    **kwargs: Any,
+) -> AsyncIterator[dict[str, Any]]:
+    """Run _extract_diffs_core on a background thread with a ProactorEventLoop.
+
+    Events are shuttled back to the caller's loop via an asyncio.Queue.
+    """
+    caller_loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[Optional[dict[str, Any]]] = asyncio.Queue()
+    _SENTINEL = None  # marks end of stream
+
+    def _run() -> None:
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(
+                _collect_into_queue(
+                    queue, caller_loop,
+                    user_prompt, house, recent_requirements, **kwargs,
+                )
+            )
+        finally:
+            loop.close()
+
+    async def _collect_into_queue(
+        q: asyncio.Queue[Optional[dict[str, Any]]],
+        target_loop: asyncio.AbstractEventLoop,
+        prompt: str,
+        h: House,
+        reqs: list[Requirement],
+        **kw: Any,
+    ) -> None:
+        try:
+            async for event in _extract_diffs_core(prompt, h, reqs, **kw):
+                target_loop.call_soon_threadsafe(q.put_nowait, event)
+        except Exception as exc:
+            target_loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": "error", "message": f"agent run failed: {exc}"},
+            )
+        finally:
+            target_loop.call_soon_threadsafe(q.put_nowait, _SENTINEL)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+
+    while True:
+        event = await queue.get()
+        if event is None:
+            break
+        yield event
+
+    thread.join(timeout=5)
 
 
 async def extract_diffs(

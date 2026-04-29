@@ -52,12 +52,12 @@ def test_clear_empty_file_returns_none(tmp_path: Path):
     assert not (tmp_path / SESSION_FILE_NAME).exists()
 
 
-def test_new_session_id_is_unique_and_hex(tmp_path: Path):
+def test_new_session_id_is_unique_and_uuid(tmp_path: Path):
+    import uuid
     a = new_session_id()
     b = new_session_id()
     assert a != b
-    assert len(a) == 32
-    int(a, 16)  # must be valid hex
+    uuid.UUID(a)  # must be a valid UUID
 
 
 def test_save_creates_parent_dir(tmp_path: Path):

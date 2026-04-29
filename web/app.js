@@ -2,6 +2,7 @@
   let viewer = null;
   let currentDesign = null;
   let inFlight = false;
+  let _updateActive = null;  // bound to the current design's room-info updater
 
   document.addEventListener("DOMContentLoaded", main);
 
@@ -129,7 +130,7 @@
       topdown.src = `/designs/${encodeURIComponent(name)}/massing/topdown.png`;
     };
 
-    const updateActive = (sceneId) => {
+    _updateActive = (sceneId) => {
       const room = roomsById[sceneId];
       Array.from(list.children).forEach((li) => {
         li.classList.toggle("active", li.dataset.sceneId === sceneId);
@@ -139,11 +140,129 @@
       if (multiFloor && room) setActiveFloor(room.floor);
     };
 
-    viewer.on("scenechange", updateActive);
-    updateActive(firstSceneId);
+    viewer.on("scenechange", _updateActive);
+    _updateActive(firstSceneId);
 
     setStyle(house.style);
     setRequirementsLog(reqs.requirements || []);
+  }
+
+  /**
+   * Lightweight refresh after an approve/reject — keeps the chat log and
+   * panorama visible while new data loads, then swaps in the updated
+   * viewer at the same scene.
+   */
+  async function refreshDesign(name) {
+    const overlay = document.getElementById("pano-overlay");
+    overlay.classList.add("visible");
+
+    // Remember current scene so we can return to it.
+    const prevScene = viewer ? viewer.getScene() : null;
+
+    try {
+      const [tour, house, reqs] = await Promise.all([
+        fetch(`/designs/${encodeURIComponent(name)}/tour.json`).then((r) => r.json()),
+        fetch(`/designs/${encodeURIComponent(name)}/house.json`).then((r) => r.json()),
+        fetch(`/designs/${encodeURIComponent(name)}/requirements.jsonl`).then((r) => r.json()),
+      ]);
+
+      document.getElementById("design-sub").textContent =
+        `${house.rooms.length} room${house.rooms.length === 1 ? "" : "s"}`;
+
+      // Rebuild the viewer.
+      if (viewer) { viewer.destroy(); viewer = null; }
+
+      const firstSceneId = tour.default && tour.default.firstScene;
+      if (!firstSceneId) {
+        document.getElementById("panorama").textContent = "No rooms defined for this design.";
+        return;
+      }
+
+      // Restore the scene the user was looking at (if it still exists).
+      const targetScene = (prevScene && tour.scenes[prevScene]) ? prevScene : firstSceneId;
+      const cfg = { default: { ...tour.default, firstScene: targetScene, sceneFadeDuration: 600 }, scenes: tour.scenes };
+      viewer = pannellum.viewer("panorama", cfg);
+
+      // Rebuild room list + topdown (same as loadDesign).
+      const roomsById = Object.fromEntries(house.rooms.map((r) => [r.id, r]));
+      const tourableRooms = house.rooms.filter((r) => r.tourable !== false);
+      const list = document.getElementById("rooms");
+      list.innerHTML = "";
+
+      const byFloor = new Map();
+      tourableRooms.forEach((r) => {
+        if (!byFloor.has(r.floor)) byFloor.set(r.floor, []);
+        byFloor.get(r.floor).push(r);
+      });
+      const floors = [...byFloor.keys()].sort((a, b) => a - b);
+      const multiFloor = floors.length > 1;
+
+      floors.forEach((floor) => {
+        byFloor.get(floor).forEach((room) => {
+          const li = document.createElement("li");
+          li.dataset.sceneId = room.id;
+          li.dataset.floor = String(room.floor);
+          li.innerHTML = `${room.name}<small>${roomDims(room)} · ceiling ${room.ceiling_height_m.toFixed(1)} m</small>`;
+          li.addEventListener("click", () => viewer.loadScene(room.id));
+          list.appendChild(li);
+        });
+      });
+
+      const topdown = document.getElementById("topdown");
+      const tabs = document.getElementById("floor-tabs");
+      tabs.innerHTML = "";
+
+      const setTopdownToRoom = (sceneId) => {
+        topdown.src = `/designs/${encodeURIComponent(name)}/massing/${sceneId}/topdown.png?v=${Date.now()}`;
+      };
+      const setTopdownToFloor = (floor) => {
+        topdown.src = `/designs/${encodeURIComponent(name)}/massing/topdown-floor${floor}.png?v=${Date.now()}`;
+      };
+      const filterListToFloor = (floor) => {
+        Array.from(list.children).forEach((li) => {
+          li.style.display = !multiFloor || Number(li.dataset.floor) === floor ? "" : "none";
+        });
+      };
+      const setActiveFloor = (floor) => {
+        Array.from(tabs.children).forEach((b) =>
+          b.classList.toggle("active", Number(b.dataset.floor) === floor),
+        );
+        filterListToFloor(floor);
+      };
+      if (multiFloor) {
+        floors.forEach((f) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = floorLabel(f);
+          btn.dataset.floor = String(f);
+          btn.addEventListener("click", () => { setActiveFloor(f); setTopdownToFloor(f); });
+          tabs.appendChild(btn);
+        });
+      }
+
+      topdown.onerror = () => {
+        topdown.onerror = null;
+        topdown.src = `/designs/${encodeURIComponent(name)}/massing/topdown.png`;
+      };
+
+      _updateActive = (sceneId) => {
+        const room = roomsById[sceneId];
+        Array.from(list.children).forEach((li) => {
+          li.classList.toggle("active", li.dataset.sceneId === sceneId);
+        });
+        setRoomInfo(room);
+        setTopdownToRoom(sceneId);
+        if (multiFloor && room) setActiveFloor(room.floor);
+      };
+
+      viewer.on("scenechange", _updateActive);
+      _updateActive(targetScene);
+
+      setStyle(house.style);
+      setRequirementsLog(reqs.requirements || []);
+    } finally {
+      overlay.classList.remove("visible");
+    }
   }
 
   // ---- Chat / SSE flow ---------------------------------------------------
@@ -187,20 +306,24 @@
       return;
     }
     if (event.type === "status") {
-      const line = document.createElement("div");
-      line.className = "status";
-      line.textContent = event.label || event.tool || "Working…";
-      agentEl.appendChild(line);
+      const loader = agentEl.querySelector(".loading-indicator");
+      if (loader) {
+        const label = loader.querySelector(".loading-label");
+        if (label) label.textContent = event.label || event.tool || "Working\u2026";
+      }
       scrollChat();
       return;
     }
     if (event.type === "error") {
+      const loader = agentEl.querySelector(".loading-indicator");
+      if (loader) loader.remove();
       appendAgentError(agentEl, event.message || "Something went wrong.");
       return;
     }
     if (event.type === "result") {
-      // Drop the status spinner lines once the result is in (keep the diffs only).
-      Array.from(agentEl.querySelectorAll(".status")).forEach((s) => s.remove());
+      // Drop the loading indicator once the result is in.
+      const loader = agentEl.querySelector(".loading-indicator");
+      if (loader) loader.remove();
       const result = event.extractor_result || {};
       if (result.kind === "clarification") {
         const bubble = document.createElement("div");
@@ -332,7 +455,7 @@
         }
         replaceWithResolved(wrapper, "ok", `✓ Approved (${(body.applied || []).join(", ")})`);
         toast(`Approved ${(body.applied || []).join(", ")}`, "ok");
-        await loadDesign(currentDesign);  // refresh viewer + topdown + reqs log
+        await refreshDesign(currentDesign);  // refresh viewer + topdown + reqs log
       } else {
         if (!res.ok) {
           toast(body.detail || `HTTP ${res.status}`, "error");
@@ -433,6 +556,12 @@
     const log = document.getElementById("chat-log");
     const msg = document.createElement("div");
     msg.className = "msg agent";
+    const loader = document.createElement("div");
+    loader.className = "loading-indicator";
+    loader.innerHTML =
+      '<div class="loading-dots"><span></span><span></span><span></span></div>' +
+      '<span class="loading-label">Thinking\u2026</span>';
+    msg.appendChild(loader);
     log.appendChild(msg);
     scrollChat();
     return msg;
