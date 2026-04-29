@@ -42,6 +42,62 @@
   .topdown .floor-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
   .topdown .floor-tabs button { flex: 1; background: #2a2d35; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font: inherit; cursor: pointer; }
   .topdown .floor-tabs button.active { border-color: var(--accent); color: var(--accent); }
+  /* Prompt + diffs panel */
+  .prompt { padding: 10px 12px 0; }
+  .prompt textarea {
+    width: 100%; min-height: 60px; resize: vertical;
+    background: #1a1c22; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px; font: inherit;
+  }
+  .prompt button {
+    margin-top: 6px; width: 100%;
+    background: var(--accent); color: #1b1d22; font-weight: 600;
+    border: none; border-radius: 6px; padding: 8px; cursor: pointer;
+  }
+  .prompt button:disabled { opacity: 0.5; cursor: progress; }
+  .prompt .status { margin-top: 6px; font-size: 12px; color: var(--muted); min-height: 16px; }
+  .prompt .status.error { color: #e88a8a; }
+  .prompt .status.ok { color: #8ad19a; }
+
+  .diffs { padding: 0 12px 8px; }
+  .diff-card {
+    background: #1a1c22; border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; margin-bottom: 8px; font-size: 12px;
+  }
+  .diff-card .top { display: flex; align-items: flex-start; gap: 6px; }
+  .diff-card input[type="checkbox"] { margin-top: 2px; }
+  .diff-card .body { flex: 1; }
+  .diff-card .meta { color: var(--muted); margin-top: 2px; }
+  .diff-card .span { font-style: italic; color: var(--muted); margin-top: 4px; }
+  .diff-card .mut { color: #8ad19a; margin-top: 4px; font-family: ui-monospace, monospace; font-size: 11px; }
+  .diff-card .conflict { color: #e8c98a; margin-top: 4px; }
+  .diff-actions { display: flex; gap: 6px; margin-top: 4px; }
+  .diff-actions button {
+    flex: 1; background: #2a2d35; color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px 8px; cursor: pointer; font: inherit;
+  }
+  .diff-actions button.primary { background: var(--accent); color: #1b1d22; border-color: var(--accent); }
+  .diff-actions button:disabled { opacity: 0.5; cursor: progress; }
+  .diff-clarify {
+    background: #2a2d35; border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; font-size: 12px;
+  }
+  .diff-clarify strong { color: var(--accent); }
+  .reject-reason {
+    width: 100%; margin-top: 6px; padding: 6px 8px;
+    background: #1a1c22; color: var(--text); border: 1px solid var(--border); border-radius: 4px;
+    font: inherit; font-size: 12px;
+  }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #2a2d35; color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 14px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    opacity: 0; transition: opacity 200ms ease; pointer-events: none; z-index: 1000;
+  }
+  .toast.show { opacity: 1; }
+  .toast.error { border-color: #e88a8a; }
+  .toast.ok { border-color: #8ad19a; }
+
   /* Stair hotspots — distinguish from door pins. */
   .pnlm-hotspot.goa-stairs {
     width: 30px; height: 30px;
@@ -72,6 +128,12 @@
     <select id="design-select"></select>
   </header>
   <aside class="left">
+    <h2>Prompt</h2>
+    <div class="prompt">
+      <textarea id="prompt-input" placeholder="e.g. Add a 4×5m bedroom in the NE corner with a window facing north."></textarea>
+      <button id="prompt-send" type="button">Send</button>
+      <div id="prompt-status" class="status"></div>
+    </div>
     <div class="topdown">
       <h2>Plan</h2>
       <div id="floor-tabs" class="floor-tabs"></div>
@@ -79,17 +141,22 @@
     </div>
     <h2>Rooms</h2>
     <ul id="rooms" class="room-list"></ul>
+    <h2>Recent requirements</h2>
+    <div class="panel-block" id="reqs-log"><p style="margin:0;color:var(--muted)">None yet.</p></div>
   </aside>
   <main>
     <div id="panorama"></div>
   </main>
   <aside class="right">
+    <h2>Pending diffs</h2>
+    <div class="diffs" id="diffs-container"><p style="color:var(--muted);font-size:12px;margin:4px 0">Send a prompt to see proposed diffs.</p></div>
     <h2>Current room</h2>
     <div class="panel-block" id="room-info"><p>Loading…</p></div>
     <h2>Style</h2>
     <div class="panel-block" id="style-info"></div>
   </aside>
 </div>
+<div id="toast" class="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
 <script src="/static/app.js"></script>
 </body>
