@@ -178,6 +178,7 @@ class Requirement(BaseModel):
     status: RequirementStatus = "proposed"
     supersedes: Optional[str] = None
     conflicts_with: list[str] = Field(default_factory=list)
+    rejection_reason: Optional[str] = None
 
     @staticmethod
     def next_id(existing: list["Requirement"]) -> str:
