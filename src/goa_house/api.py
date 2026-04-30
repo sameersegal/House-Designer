@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Optional
@@ -18,6 +19,7 @@ from goa_house.agents.sessions import (
 )
 from goa_house.approval import ApprovalError, approve_diffs, reject_diffs
 from goa_house.diffs import DiffApplyError, RequirementDiff
+from goa_house.render.panorama import render_panorama
 from goa_house.state import load_house, load_requirements
 from goa_house.tour.pannellum import build_tour
 
@@ -39,6 +41,11 @@ class RejectRequest(BaseModel):
     diffs: list[RequirementDiff]
     user_prompt: str = ""
     reason: Optional[str] = None
+
+
+class RenderRequest(BaseModel):
+    room_ids: list[str]
+    force: bool = True
 
 
 def create_app(
@@ -167,6 +174,42 @@ def create_app(
         design_dir = _design_dir(designs_dir, name)
         result = reject_diffs(body.diffs, body.user_prompt, body.reason, design_dir)
         return JSONResponse({"status": "ok", **result})
+
+    @app.post("/designs/{name}/render")
+    async def design_render(name: str, body: RenderRequest) -> StreamingResponse:
+        design_dir = _design_dir(designs_dir, name)
+        house = load_house(design_dir / "house.json")
+        requirements = load_requirements(design_dir / "requirements.jsonl")
+        panos_dir = design_dir / "panos"
+        log_dir = REPO_ROOT / "state" / "logs"
+
+        rooms_by_id = {r.id: r for r in house.rooms}
+        room_ids = [
+            rid for rid in body.room_ids
+            if rid in rooms_by_id and rooms_by_id[rid].tourable is not False
+        ]
+
+        async def event_stream():
+            for rid in room_ids:
+                yield _sse({"type": "rendering", "room_id": rid, "label": f"Rendering {rid}\u2026"})
+                try:
+                    room = rooms_by_id[rid]
+                    out_path = panos_dir / f"{rid}.jpg"
+                    await asyncio.to_thread(
+                        render_panorama,
+                        house,
+                        room,
+                        out_path,
+                        requirements,
+                        force=body.force,
+                        log_dir=log_dir,
+                    )
+                    yield _sse({"type": "room_done", "room_id": rid})
+                except Exception as exc:  # noqa: BLE001
+                    yield _sse({"type": "room_error", "room_id": rid, "message": str(exc)})
+            yield _sse({"type": "done"})
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     return app
 

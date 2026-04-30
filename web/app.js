@@ -458,6 +458,11 @@
         replaceWithResolved(wrapper, "ok", `✓ Approved (${(body.applied || []).join(", ")})`);
         toast(`Approved ${(body.applied || []).join(", ")}`, "ok");
         await refreshDesign(currentDesign);  // refresh viewer + topdown + reqs log
+        // Trigger gpt-image-2 re-render for affected rooms
+        const affectedRooms = body.affected_rooms || [];
+        if (affectedRooms.length) {
+          triggerRender(currentDesign, affectedRooms);
+        }
       } else {
         if (!res.ok) {
           toast(body.detail || `HTTP ${res.status}`, "error");
@@ -471,6 +476,41 @@
     } catch (err) {
       toast(err.message || String(err), "error");
       setDecisionPending(wrapper, false);
+    }
+  }
+
+  async function triggerRender(designName, roomIds) {
+    const overlay = document.getElementById("pano-overlay");
+    const overlayLabel = overlay.querySelector(".label");
+    overlay.classList.add("visible");
+    overlayLabel.textContent = `Rendering ${roomIds.join(", ")}\u2026`;
+    try {
+      const res = await fetch(
+        `/designs/${encodeURIComponent(designName)}/render`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ room_ids: roomIds, force: true }),
+        },
+      );
+      if (!res.ok) {
+        toast("Render request failed", "error");
+        overlay.classList.remove("visible");
+        return;
+      }
+      await readSSE(res, (event) => {
+        if (event.type === "rendering") {
+          overlayLabel.textContent = event.label || `Rendering ${event.room_id}\u2026`;
+        } else if (event.type === "room_done") {
+          toast(`Rendered ${event.room_id}`, "ok");
+        } else if (event.type === "room_error") {
+          toast(`Render error: ${event.message}`, "error");
+        }
+      });
+      await refreshDesign(designName);
+    } catch (err) {
+      toast(err.message || String(err), "error");
+      overlay.classList.remove("visible");
     }
   }
 
